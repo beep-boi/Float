@@ -1,7 +1,7 @@
 /* Float — offline service worker.
    Caches the app shell so it opens with no network at all.
    Bump CACHE_VERSION whenever you upload a new index.html. */
-const CACHE_VERSION = 'float-v14';
+const CACHE_VERSION = 'float-v15';
 const ASSETS = [
   './',
   './index.html',
@@ -30,6 +30,11 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
+
+  // Never intercept Google sign-in or Drive API traffic — it must always
+  // hit the network live, and caching auth responses would break sync.
+  const host = new URL(req.url).hostname;
+  if (host.endsWith('googleapis.com') || host.endsWith('google.com') || host.endsWith('gstatic.com')) return;
 
   // Navigations: try network, fall back to the cached shell when offline.
   if (req.mode === 'navigate') {
