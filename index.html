@@ -246,6 +246,9 @@ body.night .hd{background:linear-gradient(180deg,var(--g1) 65%,transparent)}
   background:var(--brass);
   font-size:12px;font-weight:700;letter-spacing:.04em;white-space:nowrap}
 .paidbtn:active{transform:scale(.95)}
+.sellbtn{flex-shrink:0;margin-left:10px;padding:9px 14px;border-radius:11px;background:var(--ink3);
+  border:1px solid var(--teal);color:var(--teal);font-size:12px;font-weight:700;white-space:nowrap}
+.sellbtn:active{background:var(--teal);color:#12141B}
 .undobtn{flex-shrink:0;padding:10px 13px;border-radius:13px;background:var(--ink3);
   border:1px solid var(--cardline);color:var(--muted);font-size:11.5px;font-weight:600;white-space:nowrap}
 
@@ -1143,7 +1146,8 @@ function wMetals(){
          +'<s>'+esc(l.source||l.brand||'')+' \u00b7 '+esc(fmtDMY(l.date))
          +((l.status||'delivered')==='transit'?' \u00b7 in transit':'')+'</s></div>'
          +'<div class="crt"><div class="mono" style="font-size:13.5px">\u20b9'+inr(v)+'</div>'
-         +'<div class="mono '+(p>=0?'in':'out')+'" style="font-size:11px;margin-top:2px">'+(p>=0?'+':'\u2212')+'\u20b9'+inr(p)+'</div></div></div>';
+         +'<div class="mono '+(p>=0?'in':'out')+'" style="font-size:11px;margin-top:2px">'+(p>=0?'+':'\u2212')+'\u20b9'+inr(p)+'</div></div>'
+         +'<button class="sellbtn" data-a="w-sell-lot" data-v="'+l.id+'">Sell</button></div>';
       });
       h+='</div>';
     }
@@ -1258,9 +1262,10 @@ function wSheetView(){
   else if(k==='lot'){
     var l=isNew?{metal:S.wSheet.metal||'gold',date:todayISO(),brand:'',source:'',karat:'',grams:'',purchaseRate:'',payCard:'',status:'delivered',note:''}:wFind(W.metals,id);
     var isS=metalOf(l)==='silver';
-    h+='<div class="fld"><label>Metal</label><div class="chips" data-grp="wmetal">'
+    h+=(isNew?'<div class="fld"><label>Metal</label><div class="chips" data-grp="wmetal">'
      +['gold','silver'].map(function(m){return '<button class="chip'+(metalOf(l)===m?' on':'')+'" data-a="w-metal" data-v="'+m+'">'+(m==='gold'?'Gold':'Silver')+'</button>'}).join('')
      +'</div></div>'
+     :'<div style="font-size:11.5px;color:var(--muted);margin-bottom:14px">'+(metalOf(l)==='silver'?'Silver':'Gold')+' holding</div>')
      +'<div style="display:flex;gap:10px">'
      +'<div style="flex:1.2">'+wF('Grams','wf-grams',l.grams,'num','10')+'</div>'
      +'<div style="flex:1">'+wF(isS?'Purity':'Karat','wf-karat',l.karat,'num',isS?'999':'24')+'</div></div>'
@@ -1277,19 +1282,26 @@ function wSheetView(){
      +wF('Note','wf-note',l.note,'text','optional');
   }
   else if(k==='sale'){
-    var metal=S.wSheet.metal||'gold';
-    var lots=liveLots(metal);
-    var sel=S.wSheet.lotId||(lots[0]?lots[0].id:'');
+    var sale=id?wFind(W.sales,id):null;
+    var metal=S.wSheet.metal||(sale?metalOf(sale):'gold');
+    var lots=liveLots(metal).slice();
+    if(sale){var sl=wFind(W.metals,sale.lotId);
+      if(sl){var seen=false;lots.forEach(function(x){if(x.id===sl.id)seen=true});if(!seen)lots.unshift(sl);}}
+    var sel=S.wSheet.lotId||(sale?sale.lotId:(lots[0]?lots[0].id:''));
     var lot=wFind(W.metals,sel);
+    var avail=lot?gm(lot.grams+(sale&&String(sale.lotId)===String(sel)?(+sale.grams||0):0)):0;
     h+='<div class="fld"><label>Which holding</label>'
      +(lots.length?'<select class="inp" data-f2="saleLot">'+lots.map(function(x){
+        var extra=(sale&&String(sale.lotId)===String(x.id))?(+sale.grams||0):0;
         return '<option value="'+x.id+'"'+(String(sel)===String(x.id)?' selected':'')+'>'
-         +esc(gm(x.grams)+'g \u00b7 '+(metal==='silver'?(x.karat||999):(x.karat||24)+'K')+(x.source?' \u00b7 '+x.source:''))+'</option>'}).join('')+'</select>'
-       :'<div class="hintbox">Nothing to sell yet.</div>')+'</div>'
-     +wF('Grams sold','wf-grams','','num',lot?String(gm(lot.grams)):'0')
-     +wF('Sell rate per gram (\u20b9)','wf-sellRate','','num','15500')
-     +wF('Sold on','wf-date',todayISO(),'date','')
-     +wF('Buyer','wf-buyer','','text','optional')
+         +esc(gm(x.grams+extra)+'g \u00b7 '+(metal==='silver'?(x.karat||999):(x.karat||24)+'K')+(x.source?' \u00b7 '+x.source:''))+'</option>'}).join('')+'</select>'
+       :'<div class="hintbox">Nothing to sell yet.</div>')
+     +(lot?'<div style="font-size:11.5px;color:var(--muted);margin-top:7px">'+avail+'g available \u00b7 bought at \u20b9'+inr(lot.purchaseRate)+'/g</div>':'')
+     +'</div>'
+     +wF('Grams sold','wf-grams',(sale?gm(sale.grams):''),'num',String(avail))
+     +wF('Sell rate per gram (\u20b9)','wf-sellRate',(sale?Math.round(sale.sellRate):''),'num','15500')
+     +wF('Sold on','wf-date',(sale?sale.date:todayISO()),'date','')
+     +wF('Buyer','wf-buyer',(sale?(sale.buyer||''):''),'text','optional')
      +'<div class="hintbox" style="margin-bottom:12px">Profit is worked out against what you paid for that holding, and the grams come off it.</div>';
   }
   else{
@@ -1300,6 +1312,8 @@ function wSheetView(){
      +wF('Note','wf-note',r.note,'text','what it\u2019s for');
   }
 
+  if(!isNew&&k==='lot')h+='<button class="chip" style="width:100%;padding:14px;margin-bottom:9px" '
+   +'data-a="w-lot-clone" data-v="'+id+'">Duplicate this holding</button>';
   if(!isNew)h+='<button class="chip" style="width:100%;padding:14px;color:var(--verm);border:1px solid var(--rule)" '
    +'data-a="w-del" data-v="'+k+'|'+id+'">Delete this '+esc(t)+'</button>';
   h+='</div><div class="sheet-ft"><button class="save" data-a="w-save">'+(isNew?'Add':'Save changes')+'</button></div></div>';
@@ -1367,12 +1381,20 @@ function wSave(){
     if(!lot){ping('Pick a holding first');return}
     var sg=parseFloat(val('wf-grams'))||0;
     if(!sg){ping('How many grams sold?');return}
-    if(sg>lot.grams+0.0001){ping('That\u2019s more than the holding has');return}
     var rate=parseFloat(val('wf-sellRate'))||0;
     if(!rate){ping('What was the sell rate?');return}
+    var prev=id?wFind(W.sales,id):null;
+    // how many grams are really available once this sale's own grams are handed back
+    var pool=lot.grams+((prev&&String(prev.lotId)===String(lot.id))?(+prev.grams||0):0);
+    if(sg>pool+0.0001){ping('That\u2019s more than the holding has');return}
+    if(prev){
+      var oldLot=wFind(W.metals,prev.lotId);
+      if(oldLot)oldLot.grams=gm(oldLot.grams+(+prev.grams||0));
+      W.sales=W.sales.filter(function(x){return String(x.id)!==String(id)});
+    }
     var proceeds=sg*rate, basis=sg*(+lot.purchaseRate||0);
     var snap={};for(var kk in lot)snap[kk]=lot[kk];
-    W.sales.push({id:wid(W.sales),metal:metalOf(lot),karat:lot.karat,brand:lot.brand,source:lot.source,
+    W.sales.push({id:prev?prev.id:wid(W.sales),metal:metalOf(lot),karat:lot.karat,brand:lot.brand,source:lot.source,
       buyer:val('wf-buyer'),date:val('wf-date')||todayISO(),grams:gm(sg),buyRate:lot.purchaseRate,
       sellRate:rate,proceeds:Math.round(proceeds),costBasis:Math.round(basis),
       pnl:Math.round(proceeds-basis),lotId:lot.id,lotSnap:snap});
@@ -1437,9 +1459,19 @@ function wealthAction(a,v){
   if(a==='w-lot-open'){var l=wFind(W.metals,v);S.wSheet={kind:'lot',id:v,metal:l?metalOf(l):'gold',status:l?(l.status||'delivered'):'delivered'};renderOverlay(true);return}
   if(a==='w-sale-new'){var lots=liveLots(v||'gold');
     S.wSheet={kind:'sale',id:null,metal:v||'gold',lotId:lots[0]?lots[0].id:null};renderOverlay(true);return}
-  if(a==='w-sale-open'){S.wSheet={kind:'sale-view',id:v};S.wSheet=null;
-    S.confirm={title:'Remove this sale?',msg:'The grams go back onto the holding it came from.',
-      act:'w-del',val:'sale|'+v,label:'Remove'};renderOverlay(false);return}
+  if(a==='w-sale-open'){var sv=wFind(W.sales,v);
+    S.wSheet={kind:'sale',id:v,metal:sv?metalOf(sv):'gold',lotId:sv?sv.lotId:null};
+    renderOverlay(true);return}
+  if(a==='w-sell-lot'){var sl=wFind(W.metals,v);
+    S.wSheet={kind:'sale',id:null,metal:sl?metalOf(sl):'gold',lotId:v};
+    renderOverlay(true);return}
+  if(a==='w-lot-clone'){var cl=wFind(W.metals,v);
+    if(cl){var cp={};for(var ck in cl)cp[ck]=cl[ck];
+      cp.id=wid(W.metals);cp.date=todayISO();
+      W.metals.splice(W.metals.indexOf(cl)+1,0,cp);saveW();
+      S.wSheet={kind:'lot',id:cp.id,metal:metalOf(cp),status:cp.status||'delivered'};
+      renderOverlay(true);renderApp();ping('Copied \u2014 tweak and save');}
+    return}
   if(a==='w-recv-new'){S.wSheet={kind:'recv',id:null};renderOverlay(true);return}
   if(a==='w-recv-open'){S.wSheet={kind:'recv',id:v};renderOverlay(true);return}
   if(a==='w-liab-new'){S.wSheet={kind:'liab',id:null};renderOverlay(true);return}
