@@ -1,0 +1,2044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Float">
+<meta name="theme-color" content="#12141B">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Float</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="firebase-config.js"></script>
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut }
+    from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+  import { getDatabase, ref, onValue, update, get, serverTimestamp }
+    from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
+
+  // ==== PASTE YOUR FIREBASE CONFIG BETWEEN THE BRACES BELOW ====
+  const firebaseConfig = window.__HISAAB_FIREBASE__ || null;
+  // =============================================================
+
+  window.HisaabSync = { ready:false, enabled:false };
+
+  if (firebaseConfig && firebaseConfig.apiKey) {
+    try {
+      const app = initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+      const db = getDatabase(app);
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt:'select_account' });
+
+      let curUser = null, dbRef = null, unsub = null;
+
+      const api = {
+        ready:true, enabled:true, user:null,
+        signIn(){
+          signInWithPopup(auth, provider).catch(function(){
+            signInWithRedirect(auth, provider);
+          });
+        },
+        signOut(){ if(unsub){unsub();unsub=null;} signOut(auth); },
+        push(payload){
+          if(!dbRef) return Promise.resolve(false);
+          return update(dbRef, payload).then(function(){return true;}).catch(function(){return false;});
+        }
+      };
+      window.HisaabSync = api;
+
+      getRedirectResult(auth).catch(function(){});
+
+      onAuthStateChanged(auth, function(user){
+        curUser = user; api.user = user;
+        if(window.__hisaabAuthChanged) window.__hisaabAuthChanged(user);
+        if(unsub){ unsub(); unsub=null; }
+        if(user){
+          dbRef = ref(db, 'ledgers/' + user.uid);
+          unsub = onValue(dbRef, function(snap){
+            var val = snap.val() || {};
+            if(window.__hisaabRemote) window.__hisaabRemote(val);
+          });
+        } else {
+          dbRef = null;
+        }
+      });
+    } catch(e){
+      window.HisaabSync = { ready:false, enabled:false, error:String(e) };
+    }
+  }
+</script>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  --g1:#F4F0E7; --g2:#F6F2EA; --g3:#EFEAE0;
+  --paper:#1B1E28;
+  --muted:#7C7565;
+  --rule:#DDD5C4;
+  --card:#FFFDF8;
+  --cardline:#E6DECD;
+  --ink:#F4F0E7;
+  --ink2:#FFFDF8;
+  --ink3:#EAE4D6;
+  --brass:#A0710F;
+  --verm:#BE3B2B;
+  --teal:#2C7A70;
+  --wm1:#1B1E28; --wm2:#BE3B2B;
+  --pill:#EAE4D6; --pilltx:#7C7565;
+  --fab1:#BE3B2B; --fab2:#A2311F;
+  --shadow:rgba(90,80,60,.16);
+  --soft:0 1px 3px rgba(90,80,60,.1);
+  --leaf:0;
+
+  min-height:100vh;color:var(--paper);
+  background:var(--g1);
+  font-family:'Archivo',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  font-size:15px;line-height:1.4;overflow-x:hidden;padding-bottom:124px;
+  -webkit-font-smoothing:antialiased;transition:color .25s ease;
+}
+body.night{background:#12141B;
+  --g1:#12141B; --g2:#14161F; --g3:#101219;
+  --paper:#EFEAE1; --muted:#828AA0; --rule:#2E3342;
+  --card:#191C26;
+  --cardline:#2A2F3D;
+  --ink:#12141B; --ink2:#191C26; --ink3:#232734;
+  --brass:#E0A93B; --verm:#E2503F; --teal:#46A6A0;
+  --wm1:#EFEAE1; --wm2:#E2503F;
+  --pill:#191C26; --pilltx:#A9B1C6;
+  --fab1:#E2503F; --fab2:#C6402F;
+  --shadow:rgba(0,0,0,.5);
+  --soft:0 1px 3px rgba(0,0,0,.28);
+  --leaf:0;
+}
+button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer;padding:0}
+input,select{font-family:inherit;color:var(--paper)}
+svg{display:block}
+.mono{font-family:'JetBrains Mono','SF Mono',Menlo,monospace;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+
+/* botanical watermark */
+.leaf{position:fixed;top:-26px;right:-52px;width:290px;height:290px;z-index:0;
+  pointer-events:none;opacity:var(--leaf);transition:opacity .3s ease}
+.leaf svg{width:100%;height:100%}
+#app{position:relative;z-index:1}
+
+.hd{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:9px;
+  padding:calc(11px + env(safe-area-inset-top)) 16px 11px;
+  background:linear-gradient(180deg,var(--g1) 65%,transparent);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid var(--rule)}
+body.night .hd{background:linear-gradient(180deg,var(--g1) 65%,transparent)}
+.hd-name{font-family:'Bodoni Moda',Georgia,serif;font-size:27px;font-weight:700;
+  letter-spacing:-.01em;color:var(--paper);display:flex;align-items:baseline}
+.hd-name .dot{color:var(--teal);font-size:30px;line-height:1;margin-left:1px}
+.hd-sp{flex:1}
+.mo{display:flex;align-items:center;background:var(--pill);border-radius:999px;padding:4px}
+.mo button{display:flex;padding:5px;border-radius:999px;color:var(--pilltx);opacity:.85}
+.mo button:active{opacity:1}
+.mo span{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+  padding:0 6px;min-width:66px;text-align:center;color:var(--pilltx)}
+.ibtn{display:flex;padding:9px;border-radius:999px;color:var(--muted);
+  background:var(--card);border:1px solid var(--cardline);box-shadow:var(--soft)}
+.ibtn:active{color:var(--paper)}
+
+.wrap{padding:0 18px}
+.eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.17em;text-transform:uppercase;color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--cardline);border-radius:20px;box-shadow:var(--soft)}
+.sect{margin-top:26px}
+.sect-hd{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;gap:10px}
+
+/* balance hero — centred, per the reference */
+.hero{padding:26px 18px 4px}
+.hero-lbl2{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.hero-num{font-family:'Bodoni Moda',Georgia,serif;font-size:56px;line-height:1;font-weight:500;
+  letter-spacing:-.022em;font-variant-numeric:tabular-nums;word-break:break-all;
+  color:var(--paper);margin-top:6px}
+.hero-num .r{font-size:.6em;margin-right:4px;vertical-align:.1em;color:var(--brass);opacity:.85}
+.hero-neg{color:var(--verm)}
+.hero-split{display:flex;gap:11px;margin-top:22px;text-align:left}
+.split{flex:1;min-width:0;background:var(--card);border:1px solid var(--cardline);
+  border-radius:18px;padding:14px 15px;box-shadow:var(--soft)}
+.split .k{font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.split .v{font-size:20px;font-weight:500;margin-top:5px;word-break:break-all}
+/* rents / spend heroes stay left-aligned */
+.hero-lbl{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap}
+
+.coll{margin-top:16px;padding:16px 17px}
+.coll-top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:11px;gap:8px}
+.coll-top b{font-size:14px;font-weight:600}
+.coll-top .n{font-size:12px;color:var(--muted);white-space:nowrap}
+.bar{height:8px;border-radius:999px;background:var(--rule);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:999px;transition:width .45s ease;background:var(--brass)}
+.coll-note{margin-top:10px;font-size:11.5px;color:var(--muted)}
+.coll-note b{color:var(--brass);font-weight:600}
+
+.ledger{position:relative;background:var(--card);border:1px solid var(--cardline);
+  border-radius:20px;padding:2px 16px;box-shadow:var(--soft)}
+.ledger:before{content:'';position:absolute;left:62px;top:14px;bottom:14px;width:1px;
+  background:var(--verm);opacity:.3}
+.row{position:relative;display:flex;align-items:center;padding:13px 0;border-bottom:1px solid var(--rule)}
+.row:last-child{border-bottom:0}
+.row-d{width:46px;flex-shrink:0;padding-right:12px;text-align:right}
+.row-d .dd{font-size:14.5px;font-weight:600;line-height:1.05}
+.row-d .mm{font-size:9.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.row-b{flex:1;min-width:0;padding-left:14px}
+.row-t{font-size:14.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row-s{font-size:11.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row-r{text-align:right;padding-left:10px;flex-shrink:0}
+.row-a{font-size:15px;font-weight:600;white-space:nowrap}
+.row-bal{font-size:10.5px;color:var(--muted);margin-top:2px;white-space:nowrap}
+.in{color:var(--brass)}.out{color:var(--verm)}.mv{color:var(--teal)}
+.rowbtns{display:flex;gap:6px;padding-left:8px}
+.rowbtns button{display:flex;padding:10px;border-radius:11px;color:var(--muted);
+  background:var(--ink3);border:1px solid var(--cardline)}
+.rowbtns button:active{color:var(--paper)}
+
+.empty{padding:40px 24px 34px;text-align:center;background:none;
+  border:1px dashed var(--rule);border-radius:20px}
+.empty h4{font-family:'Bodoni Moda',Georgia,serif;font-size:22px;font-weight:500;margin:0 0 7px;letter-spacing:-.01em}
+.empty p{font-size:13.5px;color:var(--muted);margin:0;line-height:1.5}
+.empty .cta{margin-top:18px;padding:12px 26px;border-radius:999px;background:none;
+  border:1px solid var(--brass);color:var(--brass);font-size:13.5px;font-weight:600}
+.empty .cta:active{background:var(--paper);color:var(--ink);border-color:var(--paper)}
+
+.catrow{display:flex;align-items:center;gap:11px;padding:9px 0}
+.catrow .nm{width:92px;flex-shrink:0;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.catrow .tk{flex:1;height:9px;background:var(--rule);border-radius:999px;overflow:hidden}
+.catrow .tk i{display:block;height:100%;border-radius:999px;background:var(--verm)}
+.catrow .vl{width:78px;text-align:right;font-size:12.5px;font-weight:600}
+
+.cols{display:flex;align-items:flex-end;gap:8px;height:130px;padding:12px 2px 0}
+.col{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end}
+.col .pair{display:flex;align-items:flex-end;gap:3px;height:100%;width:100%;justify-content:center}
+.col .pair i{width:11px;border-radius:4px 4px 0 0;min-height:2px}
+.col .lb{font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.legend{display:flex;gap:14px;margin-top:12px}
+.legend span{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
+.legend i{width:9px;height:9px;border-radius:3px}
+
+.estate{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.estate b{font-family:'Bodoni Moda',Georgia,serif;font-size:24px;font-weight:600;letter-spacing:-.01em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.estate .ed{display:flex;padding:9px;border-radius:11px;background:var(--card);
+  border:1px solid var(--cardline);color:var(--muted);flex-shrink:0;box-shadow:var(--soft)}
+.estate .ed:active{color:var(--paper)}
+.estate .hint{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);margin-left:auto;flex-shrink:0;opacity:.7}
+
+.unit{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--rule)}
+.unit:last-child{border-bottom:0}
+.unit .tag{width:44px;height:44px;flex-shrink:0;border-radius:14px;display:flex;align-items:center;
+  justify-content:center;font-size:12px;font-weight:700;background:var(--ink3);color:var(--muted)}
+.unit .tag.paid{background:rgba(224,169,59,.16);color:var(--brass)}
+.unit .bd{flex:1;min-width:0}
+.unit .bd b{display:block;font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.unit .bd s{display:block;text-decoration:none;font-size:11.5px;color:var(--muted);margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.unit .rt{text-align:right;flex-shrink:0}
+.unit .rt .a{font-size:14.5px;font-weight:600}
+.unit .rt .st{font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-top:3px}
+.paidbtn{flex-shrink:0;padding:10px 15px;border-radius:12px;color:#12141B;
+  background:var(--brass);
+  font-size:12px;font-weight:700;letter-spacing:.04em;white-space:nowrap}
+.paidbtn:active{transform:scale(.95)}
+.sellbtn{flex-shrink:0;margin-left:10px;padding:9px 14px;border-radius:11px;background:var(--ink3);
+  border:1px solid var(--teal);color:var(--teal);font-size:12px;font-weight:700;white-space:nowrap}
+.sellbtn:active{background:var(--teal);color:#12141B}
+.undobtn{flex-shrink:0;padding:10px 13px;border-radius:13px;background:var(--ink3);
+  border:1px solid var(--cardline);color:var(--muted);font-size:11.5px;font-weight:600;white-space:nowrap}
+
+.ptile{padding:17px 18px;margin-bottom:11px}
+.ptile .nm{font-size:16px;font-weight:600}
+.ptile .grid{display:flex;margin-top:14px}
+.ptile .g{flex:1;min-width:0}
+.ptile .g+.g{border-left:1px solid var(--rule);padding-left:12px}
+.ptile .g:first-child{padding-right:12px}
+.ptile .g .k{font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.ptile .g .v{font-size:18px;font-weight:500;margin-top:5px;word-break:break-all;
+  font-family:'Bodoni Moda',Georgia,serif}
+
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;
+  padding:9px 10px calc(11px + env(safe-area-inset-bottom));
+  background:linear-gradient(0deg,var(--g3) 62%,transparent);
+  backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-top:1px solid var(--rule)}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:6px 2px;color:var(--muted)}
+.tab.on{color:var(--paper)}
+.tab .ic{display:flex;padding:7px 20px;border-radius:999px;transition:background .2s}
+.tab.on .ic{background:var(--ink3);color:var(--paper)}
+.tab .tl{font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.fab{position:fixed;right:18px;bottom:calc(88px + env(safe-area-inset-bottom));z-index:41;
+  width:58px;height:58px;border-radius:18px;color:#fff;
+  background:var(--fab1);
+  display:flex;align-items:center;justify-content:center;box-shadow:0 10px 26px rgba(238,91,78,.38)}
+.fab:active{transform:scale(.94)}
+
+.scrim{position:fixed;inset:0;z-index:60;background:rgba(60,40,25,.34);
+  backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);animation:fade .18s ease}
+body.night .scrim{background:rgba(4,8,7,.66)}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:61;max-height:96vh;display:flex;flex-direction:column;
+  background:linear-gradient(168deg,var(--g1),var(--g2));
+  border-top:1px solid var(--cardline);border-radius:26px 26px 0 0;box-shadow:0 -10px 34px var(--shadow)}
+.sheet.anim{animation:up .26s cubic-bezier(.2,.9,.3,1)}
+@keyframes up{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.sheet-hd{display:flex;align-items:center;gap:10px;padding:15px 18px 12px;border-bottom:1px solid var(--rule);flex-shrink:0}
+.sheet-hd h3{font-family:'Bodoni Moda',Georgia,serif;font-size:21px;font-weight:500;margin:0;flex:1;letter-spacing:-.01em}
+.sheet-top{padding:13px 18px 0;flex-shrink:0}
+.sheet-bd{overflow-y:auto;padding:15px 18px 4px;-webkit-overflow-scrolling:touch;flex:1;min-height:0}
+.sheet-ft{padding:10px 18px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--rule);flex-shrink:0}
+
+.seg{display:flex;gap:5px;background:var(--ink3);padding:4px;border-radius:15px;border:1px solid var(--cardline)}
+.seg button{flex:1;padding:11px 4px;border-radius:12px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.seg button.on{background:#fff;box-shadow:var(--soft)}
+body.night .seg button.on{background:rgba(255,255,255,.1)}
+.seg button.on.t-rent{color:var(--brass)}
+.seg button.on.t-expense{color:var(--verm)}
+.seg button.on.t-given{color:var(--teal)}
+.seg button.on.t-received{color:var(--brass)}
+
+.amt{text-align:center;padding:16px 0 6px}
+.amt .n{font-family:'Bodoni Moda',Georgia,serif;font-size:46px;line-height:1;font-weight:500;
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.amt .n .r{font-size:.56em;opacity:.5;margin-right:4px;vertical-align:.12em}
+.amt .n.z{opacity:.22}
+.quick{display:flex;justify-content:center;margin-top:9px}
+.quick button{padding:8px 17px;border-radius:999px;background:rgba(30,138,94,.1);
+  color:var(--brass);font-size:12px;font-weight:700;letter-spacing:.03em}
+
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:10px}
+.pad button{padding:14px 0;border-radius:15px;background:var(--card);border:1px solid var(--cardline);
+  font-size:20px;font-weight:500;font-family:'JetBrains Mono',monospace;
+  display:flex;align-items:center;justify-content:center;box-shadow:var(--soft)}
+.pad button:active{background:var(--ink3);transform:scale(.96)}
+.pad button.act{color:var(--muted)}
+
+.fld{margin-bottom:15px}
+.fld>label{display:block;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:8px}
+.chips{display:flex;flex-wrap:wrap;gap:7px}
+.chip{padding:10px 14px;border-radius:999px;background:var(--card);border:1px solid var(--cardline);
+  font-size:12.5px;font-weight:500;color:var(--muted);box-shadow:var(--soft)}
+.chip.on{background:var(--paper);border-color:transparent;color:var(--ink)}
+.chip.add{border:1px dashed var(--rule);background:none;box-shadow:none}
+
+.inp{width:100%;padding:13px 14px;border-radius:14px;background:var(--card);
+  border:1px solid var(--cardline);font-size:16px;outline:none;box-shadow:var(--soft)}
+.inp:focus{border-color:var(--brass)}
+.inp::placeholder{color:var(--muted)}
+select.inp{-webkit-appearance:none;appearance:none}
+
+.save{width:100%;padding:17px;border-radius:16px;color:var(--ink);font-size:15px;font-weight:700;
+  background:var(--paper)}
+.save:disabled{opacity:.32;box-shadow:none}
+.save:active:not(:disabled){transform:scale(.985)}
+
+.hintbox{padding:14px 15px;border-radius:16px;background:var(--card);border:1px solid var(--cardline);
+  font-size:12px;line-height:1.55;color:var(--muted);box-shadow:var(--soft)}
+.hintbox b{color:var(--paper);font-weight:600}
+
+.setrow{display:flex;align-items:center;gap:9px;padding:13px 0;border-bottom:1px solid var(--rule)}
+.setrow:last-child{border-bottom:0}
+.setrow .bd{flex:1;min-width:0}
+.setrow .bd b{display:block;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.setrow .bd s{display:block;text-decoration:none;font-size:11.5px;color:var(--muted);margin-top:2px}
+.setrow .x{display:flex;padding:9px;border-radius:11px;background:var(--ink3);
+  border:1px solid var(--cardline);color:var(--muted);flex-shrink:0}
+
+.tgl{width:48px;height:28px;border-radius:999px;background:var(--rule);padding:3px;flex-shrink:0;
+  display:flex;transition:background .2s}
+.tgl.on{background:var(--teal);justify-content:flex-end}
+.tgl i{display:block;width:22px;height:22px;border-radius:999px;background:#fff;box-shadow:var(--soft)}
+
+.cf-scrim{z-index:80}
+.cfbox{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:81;
+  width:min(340px,86vw);background:var(--ink2);border:1px solid var(--cardline);
+  border-radius:22px;padding:24px 21px 19px;box-shadow:0 14px 44px var(--shadow);
+  animation:pop .18s cubic-bezier(.2,.9,.3,1)}
+@keyframes pop{from{opacity:0;transform:translate(-50%,-46%) scale(.96)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+.cfbox h4{font-family:'Bodoni Moda',Georgia,serif;font-size:20px;font-weight:500;margin:0 0 9px;letter-spacing:-.01em}
+.cfbox p{font-size:13px;color:var(--muted);margin:0 0 20px;line-height:1.55}
+.cfrow{display:flex;gap:9px}
+.cfrow button{flex:1;padding:14px 8px;border-radius:14px;font-size:13.5px;font-weight:600}
+.cfno{background:var(--ink3);border:1px solid var(--cardline);color:var(--paper)}
+.cfyes{background:var(--verm);color:#fff;font-weight:700}
+.cfok{background:var(--brass);color:#12141B;font-weight:700}
+.cfok:active{transform:scale(.97)}
+.cfyes:active,.cfno:active{transform:scale(.97)}
+
+
+/* ── wealth ── */
+.wsub{display:flex;gap:5px;overflow-x:auto;padding:2px 0 2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.wsub::-webkit-scrollbar{display:none}
+.wsub button{flex:0 0 auto;padding:9px 15px;border-radius:999px;font-size:12.5px;font-weight:600;
+  color:var(--muted);background:var(--card);border:1px solid var(--cardline)}
+.wsub button.on{background:var(--paper);color:var(--ink);border-color:transparent}
+.wline{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+  padding:9px 0;border-bottom:1px solid var(--rule);font-size:13px;color:var(--muted)}
+.wline:last-child{border-bottom:0}
+.wline.grp{font-size:13.5px;font-weight:600;color:var(--paper);padding-top:13px}
+.wline.grp .mono{font-weight:600}
+.wline span:last-child{white-space:nowrap}
+.k2{font-size:9.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--muted)}
+.card.best{border-color:var(--brass);box-shadow:0 0 0 1px rgba(224,169,59,.14),var(--soft)}
+.crow{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--rule)}
+.crow:last-child{border-bottom:0}
+.cbd{flex:1;min-width:0}
+.cbd b{display:block;font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cbd s{display:block;text-decoration:none;font-size:11.5px;color:var(--muted);margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ubar{height:4px;border-radius:999px;background:var(--rule);overflow:hidden;margin-top:7px;max-width:190px}
+.ubar i{display:block;height:100%;border-radius:999px}
+.crt{text-align:right;flex-shrink:0}
+.lrow{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--rule)}
+.lrow:last-child{border-bottom:0}
+.lrank{width:24px;height:24px;flex-shrink:0;border-radius:8px;background:var(--ink3);color:var(--muted);
+  display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;
+  font-family:'JetBrains Mono',monospace}
+.lrank.top{background:var(--brass);color:#12141B}
+.tab .ic{display:flex;padding:7px 16px;border-radius:999px;transition:background .2s}
+.tab .tl{font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(154px + env(safe-area-inset-bottom));
+  z-index:70;padding:12px 20px;border-radius:999px;color:var(--ink);font-size:13px;font-weight:600;
+  background:var(--paper);box-shadow:0 8px 24px var(--shadow);animation:fade .2s ease;white-space:nowrap}
+
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;transition-duration:.01ms !important}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="overlay"></div>
+
+<script>
+(function(){
+'use strict';
+
+var PRESET_CATS=['Grocery','Cash Given','Utilities','Maintenance','Repairs','Staff','Medical','Fuel','Eating Out','Other'];
+var MODES=['Cash','UPI','Bank','Card'];
+var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var K_CFG='hisaab:config',K_ENT='hisaab:entries',K_THEME='hisaab:theme';
+
+var I={
+plus:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+plusS:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+left:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
+right:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>',
+gear:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>',
+sun:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 1.8v2.4M12 19.8v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M1.8 12h2.4M19.8 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7"/></svg>',
+moon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.6 8.6 0 1 0 11.1 11.1z"/></svg>',
+x:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>',
+xS:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>',
+trash:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>',
+pencil:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
+rotate:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v6h6"/><path d="M3.5 14a9 9 0 1 0 2.1-9.4L3 8"/></svg>',
+check:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
+back:'<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-6 8 6 8h13a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1z"/><path d="M18 9l-6 6M12 9l6 6"/></svg>',
+gem:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20"/><path d="M12 21 8.5 9 12 3l3.5 6L12 21z"/></svg>',
+wallet:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v2"/><path d="M3 7v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2H5a2 2 0 0 1-2-2z"/><circle cx="17" cy="14" r="1.4" fill="currentColor" stroke="none"/></svg>',
+build:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 21V6a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v15"/><path d="M12 10h7a1 1 0 0 1 1 1v10"/><path d="M2 21h20"/><path d="M7 9h2M7 13h2M7 17h2M15 14h2M15 18h2"/></svg>',
+receipt:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 21V4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v17l-3-2-2 2-2-2-2 2-2-2z"/><path d="M9 8h6M9 12h6"/></svg>',
+swap:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4L3 8l4 4"/><path d="M3 8h14"/><path d="M17 20l4-4-4-4"/><path d="M21 16H7"/></svg>',
+down:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13M7 12l5 5 5-5M4 21h16"/></svg>',
+up:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V7M7 11l5-5 5 5M4 3h16"/></svg>'
+};
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function inr(n){n=Math.round(Math.abs(Number(n)||0));try{return new Intl.NumberFormat('en-IN',{maximumFractionDigits:0}).format(n)}catch(e){return String(n)}}
+function pad2(n){return(n<10?'0':'')+n}
+function todayISO(){var d=new Date();return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())}
+function mKey(iso){return(iso||'').slice(0,7)}
+function mLabel(k){var p=k.split('-');return MON[+p[1]-1]+' '+p[0]}
+function shiftM(k,d){var p=k.split('-'),t=new Date(+p[0],+p[1]-1+d,1);return t.getFullYear()+'-'+pad2(t.getMonth()+1)}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+function numOf(s){var d=String(s==null?'':s).replace(/[^0-9]/g,'');return d?parseInt(d,10):0}
+function daysIn(k){var p=k.split('-');return new Date(+p[0],+p[1],0).getDate()}
+function load(k,fb){try{var v=localStorage.getItem(k);return v?JSON.parse(v):fb}catch(e){return fb}}
+function store(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}
+
+var DEFAULT_CFG={people:['Absaar','Ammar'],categories:PRESET_CATS.slice(),properties:[],givenIsSpend:false};
+var K_W='float:wealth';
+var SEED_W={"cards":[{"id":1,"name":"Gold X UPI","bank":"UNI","groupId":null,"limit":500000,"available":28908,"bill":313108,"unbilled":157984,"stDay":14,"dueDay":30,"currentDue":"2026-08-30","currentSt":"2026-08-14"},{"id":4,"name":"Wave Rupay","bank":"Federal","groupId":null,"limit":806000,"available":443629,"bill":128606,"unbilled":233765,"stDay":21,"dueDay":8,"currentDue":"2026-09-08","currentSt":"2026-08-21"},{"id":5,"name":"Times Black","bank":"ICICI","groupId":null,"limit":181000,"available":0,"bill":181000,"unbilled":0,"stDay":15,"dueDay":3,"currentDue":"2026-09-03","currentSt":"2026-08-15"},{"id":6,"name":"Rubyx / Coral / Amex / Rupay","bank":"ICICI","groupId":null,"limit":20000,"available":20000,"bill":0,"unbilled":0,"stDay":11,"dueDay":29,"currentDue":"2026-09-29","currentSt":"2026-09-11"},{"id":7,"name":"Power Miles","bank":"Equitas","groupId":null,"limit":400000,"available":270,"bill":62203,"unbilled":337527,"stDay":15,"dueDay":5,"currentDue":"2026-09-05","currentSt":"2026-08-15"},{"id":8,"name":"AU Altura+","bank":"AU Bank","groupId":null,"limit":50000,"available":50000,"bill":0,"unbilled":0,"stDay":18,"dueDay":8,"currentDue":"2026-10-08","currentSt":"2026-09-18"},{"id":9,"name":"SBI Aurum","bank":"SBI","groupId":null,"limit":555000,"available":166893,"bill":0,"unbilled":388107,"stDay":1,"dueDay":20,"currentDue":"2026-09-20","currentSt":"2026-09-01"},{"id":10,"name":"HDFC Millennia","bank":"HDFC","groupId":null,"limit":136000,"available":-38018,"bill":174018,"unbilled":0,"stDay":12,"dueDay":1,"currentDue":"2026-09-01","currentSt":"2026-08-12"},{"id":11,"name":"Indus Avios","bank":"IndusInd","groupId":null,"limit":1030000,"available":585441,"bill":0,"unbilled":444559,"stDay":5,"dueDay":25,"currentDue":"2026-09-25","currentSt":"2026-09-05"},{"id":12,"name":"World Safari","bank":"RBL","groupId":null,"limit":500000,"available":500000,"bill":0,"unbilled":0,"stDay":21,"dueDay":10,"currentDue":"2026-10-10","currentSt":"2026-09-21"},{"id":13,"name":"IDFC Select","bank":"IDFC","groupId":null,"limit":500000,"available":182729,"bill":0,"unbilled":317271,"stDay":24,"dueDay":9,"currentDue":"2026-09-09","currentSt":"2026-08-24"},{"id":14,"name":"Yes BYOC","bank":"Yes Bank","groupId":null,"limit":115000,"available":115000,"bill":0,"unbilled":0,"stDay":18,"dueDay":5,"currentDue":"2026-10-05","currentSt":"2026-09-18"},{"id":15,"name":"Slice","bank":"Slice","groupId":null,"limit":19000,"available":7019,"bill":0,"unbilled":11981,"stDay":3,"dueDay":18,"currentDue":"2026-09-18","currentSt":"2026-09-03"}],"banks":[{"id":1,"name":"Slice Bank","balance":4493},{"id":2,"name":"IndusInd Savings","balance":34431},{"id":3,"name":"Magma Bullions","balance":0},{"id":4,"name":"IDFC Bank","balance":0},{"id":5,"name":"Canara Bank","balance":0},{"id":6,"name":"HDFC Bank","balance":6770},{"id":7,"name":"Bank of Baroda","balance":2365},{"id":8,"name":"Equitas Bank","balance":7936},{"id":9,"name":"Curify Tech","balance":34861}],"metals":[{"id":8,"metal":"silver","date":"2026-05-06","brand":"BRPL","source":"Ajio","karat":999,"grams":250,"purchaseRate":252.064,"note":"Bar","payCard":"Times Black","status":"delivered"},{"id":9,"metal":"silver","date":"2026-05-06","brand":"BRPL","source":"Ajio","karat":999,"grams":250,"purchaseRate":252.064,"note":"Bar","payCard":"Times Black","status":"delivered"},{"id":10,"metal":"silver","date":"2026-05-06","brand":"BRPL","source":"Ajio","karat":999,"grams":250,"purchaseRate":252.064,"note":"Bar","payCard":"Times Black","status":"delivered"},{"id":11,"metal":"silver","date":"2026-05-06","brand":"BRPL","source":"Ajio","karat":999,"grams":250,"purchaseRate":252.064,"note":"Bar","payCard":"Times Black","status":"delivered"},{"id":12,"metal":"silver","date":"2026-05-08","brand":"BRPL","source":"Ajio","karat":999,"grams":250,"purchaseRate":260.128,"note":"Bar","payCard":"Times Black","status":"delivered"},{"id":13,"metal":"silver","date":"2026-08-21","brand":"BRPL","source":"Ajio","karat":999,"grams":250,"purchaseRate":260.128,"note":"Bar","payCard":"Times Black","status":"delivered"},{"id":15,"metal":"silver","date":"2026-08-21","brand":"BRPL","source":"Ajio","karat":999,"grams":250,"purchaseRate":260.128,"note":"Bar","payCard":"Times Black","status":"delivered"},{"id":14,"metal":"silver","date":"2026-08-21","brand":"BRPL","source":"Ajio","karat":999,"grams":250,"purchaseRate":260.128,"note":"Bar","payCard":"Times Black","status":"delivered"},{"id":26,"metal":"gold","date":"2026-08-19","brand":"Jewellery","source":"Bhima","karat":24,"grams":22.9,"purchaseRate":14344.585152838428,"note":"Two Bangles from Bhima","payCard":"Indus Avios","status":"delivered"},{"id":27,"metal":"gold","date":"2026-08-19","brand":"Jewellery","source":"Bhima","karat":24,"grams":22.8,"purchaseRate":14350.526315789473,"note":"Two Bangles from Bhima","payCard":"Power Miles","status":"delivered"},{"id":28,"metal":"gold","date":"2026-08-20","brand":"PMJ","source":"Ajio","karat":24,"grams":5,"purchaseRate":15415.2,"note":"","payCard":"SBI Aurum","status":"transit"},{"id":29,"metal":"gold","date":"2026-08-20","brand":"PMJ","source":"Ajio","karat":24,"grams":5,"purchaseRate":15515.2,"note":"","payCard":"Indus Avios","status":"transit"},{"id":38,"metal":"gold","date":"2026-08-21","brand":"Kalyan","source":"Ajio","karat":24,"grams":5,"purchaseRate":15638.6,"note":"","payCard":"Wave Rupay","status":"delivered"},{"id":39,"metal":"gold","date":"2026-08-20","brand":"PMJ","source":"Ajio","karat":24,"grams":5,"purchaseRate":15475.2,"note":"","payCard":"Wave Rupay","status":"transit"},{"id":40,"metal":"gold","date":"2026-08-20","brand":"PMJ","source":"Ajio","karat":24,"grams":5,"purchaseRate":15475.2,"note":"","payCard":"IDFC Select","status":"transit"},{"id":41,"metal":"gold","date":"2026-08-21","brand":"PMJ","source":"Ajio","karat":24,"grams":5,"purchaseRate":15475.2,"note":"","payCard":"IDFC Select","status":"transit"},{"id":42,"metal":"gold","date":"2026-08-20","brand":"PMJ","source":"Ajio","karat":24,"grams":5,"purchaseRate":15375.2,"note":"","payCard":"IDFC Select","status":"transit"},{"id":43,"metal":"gold","date":"2026-08-21","brand":"Jewellery","source":"Showroom","karat":24,"grams":21.72,"purchaseRate":15105.202578268878,"note":"Dubai bangles","payCard":"Cash","status":"delivered"}],"goldRate":15560,"silverRate":250,"liabilities":[],"receivables":[{"id":1,"name":"Mum","amount":200000,"date":null,"note":"Home Expense"}],"sales":[{"id":5,"metal":"gold","karat":24,"brand":"Kalyan","source":"Ajio","buyer":"","date":"2026-08-27","grams":3,"buyRate":14271.666666666666,"sellRate":15960,"proceeds":47880,"costBasis":42815,"pnl":5065,"note":"","lotId":18,"lotSnap":{"id":18,"metal":"gold","date":"2026-07-31","brand":"Kalyan","source":"Ajio","karat":24,"grams":3,"purchaseRate":14271.666666666666,"note":"","payCard":"UPI","status":"delivered"}},{"id":8,"metal":"gold","karat":24,"brand":"Kalyan","source":"Ajio","buyer":"","date":"2026-08-27","grams":3,"buyRate":14338.333333333334,"sellRate":15960,"proceeds":47880,"costBasis":43015,"pnl":4865,"note":"","lotId":20,"lotSnap":{"id":20,"metal":"gold","date":"2026-08-21","brand":"Kalyan","source":"Ajio","karat":24,"grams":3,"purchaseRate":14338.333333333334,"note":"","payCard":"Indus Avios","status":"delivered"}},{"id":15,"metal":"gold","karat":24,"brand":"Kalyan","source":"Ajio","buyer":"","date":"2026-08-27","grams":5,"buyRate":15638.6,"sellRate":15960,"proceeds":79800,"costBasis":78193,"pnl":1607,"note":"","lotId":35,"lotSnap":{"id":35,"metal":"gold","date":"2026-08-21","brand":"Kalyan","source":"Ajio","karat":24,"grams":5,"purchaseRate":15638.6,"note":"","payCard":"Gold X UPI","status":"delivered"}},{"id":16,"metal":"gold","karat":24,"brand":"Kalyan","source":"Ajio","buyer":"","date":"2026-08-27","grams":5,"buyRate":15638.6,"sellRate":15960,"proceeds":79800,"costBasis":78193,"pnl":1607,"note":"","lotId":36,"lotSnap":{"id":36,"metal":"gold","date":"2026-08-21","brand":"Kalyan","source":"Ajio","karat":24,"grams":5,"purchaseRate":15638.6,"note":"","payCard":"Gold X UPI","status":"delivered"}},{"id":17,"metal":"gold","karat":24,"brand":"Kalyan","source":"Ajio","buyer":"","date":"2026-08-27","grams":5,"buyRate":15638.6,"sellRate":15960,"proceeds":79800,"costBasis":78193,"pnl":1607,"note":"","lotId":37,"lotSnap":{"id":37,"metal":"gold","date":"2026-08-21","brand":"Kalyan","source":"Ajio","karat":24,"grams":5,"purchaseRate":15638.6,"note":"","payCard":"Wave Rupay","status":"delivered"}},{"id":18,"metal":"gold","karat":24,"brand":"PMJ","source":"Ajio","buyer":"","date":"2026-08-27","grams":5,"buyRate":15515.2,"sellRate":15780,"proceeds":78900,"costBasis":77576,"pnl":1324,"note":"","lotId":30,"lotSnap":{"id":30,"metal":"gold","date":"2026-08-21","brand":"PMJ","source":"Ajio","karat":24,"grams":5,"purchaseRate":15515.2,"note":"","payCard":"SBI Aurum","status":"delivered"}},{"id":19,"metal":"gold","karat":24,"brand":"PMJ","source":"Ajio","buyer":"","date":"2026-08-27","grams":5,"buyRate":15515.2,"sellRate":15780,"proceeds":78900,"costBasis":77576,"pnl":1324,"note":"","lotId":32,"lotSnap":{"id":32,"metal":"gold","date":"2026-08-21","brand":"PMJ","source":"Ajio","karat":24,"grams":5,"purchaseRate":15515.2,"note":"","payCard":"SBI Aurum","status":"delivered"}},{"id":20,"metal":"gold","karat":24,"brand":"Kalyan","source":"Ajio","buyer":"","date":"2026-08-27","grams":3,"buyRate":14338.333333333334,"sellRate":15960,"proceeds":47880,"costBasis":43015,"pnl":4865,"note":"","lotId":22,"lotSnap":{"id":22,"metal":"gold","date":"2026-08-21","brand":"Kalyan","source":"Ajio","karat":24,"grams":3,"purchaseRate":14338.333333333334,"note":"","payCard":"Indus Avios","status":"delivered"}},{"id":21,"metal":"gold","karat":24,"brand":"Kalyan","source":"Ajio","buyer":"","date":"2026-08-27","grams":3,"buyRate":14338.333333333334,"sellRate":15960,"proceeds":47880,"costBasis":43015,"pnl":4865,"note":"","lotId":23,"lotSnap":{"id":23,"metal":"gold","date":"2026-08-21","brand":"Kalyan","source":"Ajio","karat":24,"grams":3,"purchaseRate":14338.333333333334,"note":"","payCard":"Indus Avios","status":"delivered"}},{"id":22,"metal":"gold","karat":24,"brand":"Kalyan","source":"Ajio","buyer":"","date":"2026-08-27","grams":3,"buyRate":14338.333333333334,"sellRate":15960,"proceeds":47880,"costBasis":43015,"pnl":4865,"note":"","lotId":17,"lotSnap":{"id":17,"metal":"gold","date":"2026-07-31","brand":"Kalyan","source":"Ajio","karat":24,"grams":3,"purchaseRate":14338.333333333334,"note":"","payCard":"HDFC Millennia","status":"delivered"}},{"id":23,"metal":"gold","karat":24,"brand":"Kalyan","source":"Ajio","buyer":"","date":"2026-08-27","grams":3,"buyRate":14271.666666666666,"sellRate":15960,"proceeds":47880,"costBasis":42815,"pnl":5065,"note":"","lotId":16,"lotSnap":{"id":16,"metal":"gold","date":"2026-07-31","brand":"Kalyan","source":"Ajio","karat":24,"grams":3,"purchaseRate":14271.666666666666,"note":"","payCard":"UPI","status":"delivered"}},{"id":24,"metal":"gold","karat":24,"brand":"Kalyan","source":"Ajio","buyer":"","date":"2026-08-27","grams":3,"buyRate":14338.333333333334,"sellRate":15960,"proceeds":47880,"costBasis":43015,"pnl":4865,"note":"","lotId":19,"lotSnap":{"id":19,"metal":"gold","date":"2026-08-21","brand":"Kalyan","source":"Ajio","karat":24,"grams":3,"purchaseRate":14338.333333333334,"note":"","payCard":"Times Black","status":"delivered"}},{"id":25,"metal":"gold","karat":24,"brand":"Kalyan","source":"Ajio","buyer":"","date":"2026-08-27","grams":3,"buyRate":14338.333333333334,"sellRate":15960,"proceeds":47880,"costBasis":43015,"pnl":4865,"note":"","lotId":25,"lotSnap":{"id":25,"metal":"gold","date":"2026-08-21","brand":"Kalyan","source":"Ajio","karat":24,"grams":3,"purchaseRate":14338.333333333334,"note":"","payCard":"Power Miles","status":"delivered"}},{"id":26,"metal":"gold","karat":24,"brand":"Kalyan","source":"Ajio","buyer":"","date":"2026-08-27","grams":5,"buyRate":15578.6,"sellRate":15960,"proceeds":79800,"costBasis":77893,"pnl":1907,"note":"","lotId":34,"lotSnap":{"id":34,"metal":"gold","date":"2026-08-21","brand":"Kalyan","source":"Ajio","karat":24,"grams":5,"purchaseRate":15578.6,"note":"","payCard":"SBI Aurum","status":"delivered"}},{"id":27,"metal":"gold","karat":24,"brand":"Kalyan","source":"Ajio","buyer":"","date":"2026-08-27","grams":5,"buyRate":15578.6,"sellRate":15960,"proceeds":79800,"costBasis":77893,"pnl":1907,"note":"","lotId":33,"lotSnap":{"id":33,"metal":"gold","date":"2026-08-21","brand":"Kalyan","source":"Ajio","karat":24,"grams":5,"purchaseRate":15578.6,"note":"","payCard":"SBI Aurum","status":"delivered"}},{"id":28,"metal":"gold","karat":24,"brand":"Kalyan","source":"Ajio","buyer":"","date":"2026-08-27","grams":3,"buyRate":14338.333333333334,"sellRate":15960,"proceeds":47880,"costBasis":43015,"pnl":4865,"note":"","lotId":21,"lotSnap":{"id":21,"metal":"gold","date":"2026-08-21","brand":"Kalyan","source":"Ajio","karat":24,"grams":3,"purchaseRate":14338.333333333334,"note":"","payCard":"HDFC Millennia","status":"delivered"}},{"id":29,"metal":"gold","karat":24,"brand":"Kalyan","source":"Ajio","buyer":"","date":"2026-08-27","grams":3,"buyRate":14338.333333333334,"sellRate":15960,"proceeds":47880,"costBasis":43015,"pnl":4865,"note":"","lotId":24,"lotSnap":{"id":24,"metal":"gold","date":"2026-08-21","brand":"Kalyan","source":"Ajio","karat":24,"grams":3,"purchaseRate":14338.333333333334,"note":"","payCard":"HDFC Millennia","status":"delivered"}}]};
+var W={cards:[],banks:[],metals:[],goldRate:15560,silverRate:250,liabilities:[],receivables:[],sales:[],_m:0};
+function saveW(){W._m=Date.now();store(K_W,W);syncPush()}
+function pullW(){
+  var w=load(K_W,null);
+  if(!w){ // first run on this device: bring the Float books across
+    w={cards:SEED_W.cards,banks:SEED_W.banks,metals:SEED_W.metals,goldRate:SEED_W.goldRate,
+       silverRate:SEED_W.silverRate,liabilities:SEED_W.liabilities,receivables:SEED_W.receivables,
+       sales:SEED_W.sales,_m:1};
+    store(K_W,w);
+  }
+  W={cards:w.cards||[],banks:w.banks||[],metals:w.metals||[],
+     goldRate:+w.goldRate||15560,silverRate:+w.silverRate||250,
+     liabilities:w.liabilities||[],receivables:w.receivables||[],sales:w.sales||[],_m:w._m||0};
+}
+function wid(list){var n=0;list.forEach(function(x){if(+x.id>n)n=+x.id});return n+1}
+
+/* ---- money / date helpers carried over from Float ---- */
+function parseD(iso){if(!iso)return null;var p=String(iso).split('-');return new Date(+p[0],+p[1]-1,+p[2])}
+function todayD(){var d=new Date();return new Date(d.getFullYear(),d.getMonth(),d.getDate())}
+function clampMonth(d,add,day){var y=d.getFullYear(),m=d.getMonth()+add;
+  var max=new Date(y,m+1,0).getDate();return new Date(y,m,Math.min(day||d.getDate(),max))}
+function isoOf(d){return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())}
+function rollCard(c){
+  if(!c.currentDue)return false;
+  var due=parseD(c.currentDue),st=c.currentSt?parseD(c.currentSt):null,t=todayD(),ch=false,g=0;
+  while(due<t&&g<240){due=clampMonth(due,1,c.dueDay||due.getDate());
+    if(st)st=clampMonth(st,1,c.stDay||st.getDate());ch=true;g++}
+  if(ch){c.currentDue=isoOf(due);if(st)c.currentSt=isoOf(st)}
+  return ch;
+}
+function nextDue(c){
+  if(c.currentDue)return parseD(c.currentDue);
+  var t=todayD(),y=t.getFullYear(),m=t.getMonth();
+  var max=new Date(y,m+1,0).getDate();var d=new Date(y,m,Math.min(c.dueDay||1,max));
+  if(d<t){m++;max=new Date(y,m+1,0).getDate();d=new Date(y,m,Math.min(c.dueDay||1,max))}
+  return d;
+}
+function nextStatement(c){
+  var st=c.currentSt?parseD(c.currentSt):null,t=todayD(),g=0;
+  if(!st){var y=t.getFullYear(),m=t.getMonth(),max=new Date(y,m+1,0).getDate();
+    st=new Date(y,m,Math.min(c.stDay||1,max))}
+  while(st<t&&g<240){st=clampMonth(st,1,c.stDay||st.getDate());g++}
+  return st;
+}
+function daysTo(d){return Math.round((d-todayD())/86400000)}
+// A purchase made today lands on the next statement that hasn't been cut yet,
+// and is payable on the due date paired with THAT statement. Walk the
+// statement/due pair forward together -- never separately, or they drift apart.
+function freeInfo(c){
+  var t=todayD(),g=0;
+  var st=c.currentSt?parseD(c.currentSt):null;
+  var due=c.currentDue?parseD(c.currentDue):null;
+  if(!st||!due){
+    st=nextStatement(c);
+    var y=st.getFullYear(),m=st.getMonth();
+    var max=new Date(y,m+1,0).getDate();
+    due=new Date(y,m,Math.min(c.dueDay||1,max));
+    if(due<st)due=clampMonth(due,1,c.dueDay||due.getDate());
+  }
+  // statement already cut? then today's spend rolls into the following cycle
+  while(st<t&&g<240){
+    st=clampMonth(st,1,c.stDay||st.getDate());
+    due=clampMonth(due,1,c.dueDay||due.getDate());
+    g++;
+  }
+  return {st:st,due:due,days:daysTo(due)};
+}
+function freeDays(c){return freeInfo(c).days}
+function availOf(c){
+  // Float stores 'available' directly -- it's what the bank shows you, and the user keeps it accurate.
+  // Fall back to computing it only when it was never set.
+  return (c.available===undefined||c.available===null||c.available==='')
+    ? Math.max(0,(+c.limit||0)-(+c.bill||0)-(+c.unbilled||0))
+    : (+c.available||0);
+}
+function sumBilled(){return W.cards.reduce(function(s,c){return s+(+c.bill||0)},0)}
+function sumUnbilled(){return W.cards.reduce(function(s,c){return s+(+c.unbilled||0)},0)}
+function sumLimit(){return W.cards.reduce(function(s,c){return s+(+c.limit||0)},0)}
+function sumAvail(){return W.cards.reduce(function(s,c){return s+availOf(c)},0)}
+function sumBanks(){return W.banks.reduce(function(s,b){return s+(+b.balance||0)},0)}
+function goldPurity(k){return k===24?1:k===22?0.916:k===21?0.875:k===18?0.75:(+k||24)/24}
+function silverPurity(p){return p===925?0.925:1}
+function metalOf(h){return h.metal==='silver'?'silver':'gold'}
+function lotValue(h){return metalOf(h)==='silver'
+  ? h.grams*silverPurity(+h.karat||999)*W.silverRate
+  : h.grams*goldPurity(+h.karat||24)*W.goldRate}
+function lotCost(h){return h.grams*(+h.purchaseRate||0)}
+function liveLots(metal){return W.metals.filter(function(h){return metalOf(h)===metal&&h.grams>0})}
+function metalValue(metal){return liveLots(metal).reduce(function(s,h){return s+lotValue(h)},0)}
+function sumRecv(){return W.receivables.reduce(function(s,r){return s+(+r.amount||0)},0)}
+// Money currently owed by whoever funds the household (e.g. Mom), read live off the Hisaab ledger.
+// Only counts when the pool is negative -- i.e. more has been spent than has come in, so someone
+// is carrying it. A positive pool is unspent cash in hand, not a debt, so it's left out of this.
+function liveMomOwed(){var pool=computeBalances().pool;return pool<0?-pool:0}
+function sumLiab(){return W.liabilities.reduce(function(s,l){return s+(+l.amount||0)},0)}
+function realisedPnl(metal){return W.sales.filter(function(x){return metalOf(x)===metal})
+  .reduce(function(s,x){return s+(+x.pnl||0)},0)}
+function netWorth(){
+  var assets=sumBanks()+metalValue('gold')+metalValue('silver')+sumRecv()+liveMomOwed();
+  var liab=sumBilled()+sumUnbilled()+sumLiab();
+  return {assets:assets,liab:liab,nw:assets-liab};
+}
+function gm(n){return (Math.round((+n||0)*100)/100)}
+
+var S={cfg:DEFAULT_CFG,entries:[],tab:'balance',month:mKey(todayISO()),
+  sheet:null,setup:false,openRow:null,propSheet:null,unitSheet:null,confirm:null,wsub:'worth',wSheet:null,toast:'',light:false};
+
+var SEED_LEDGER={"entries":[{"id":"mt4cxvsdtj16y","ts":1787401898797,"type":"rent","amount":10500,"date":"2026-08-01","mode":"Bank","note":"","person":"Absaar","category":null,"unitId":"mt4cn3o3bqvn3","unitLabel":"102","tenant":"Rizwan","propName":"Tolichowki","_m":1787496389848},{"id":"mt4cyy7iamtxd","ts":1787401948590,"type":"expense","amount":1030,"date":"2026-08-22","mode":"UPI","note":"Gas","person":"Absaar","category":"Utilities","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"_m":1787496389848},{"id":"mt4czu3j5ggs8","ts":1787401989919,"type":"expense","amount":650,"date":"2026-08-22","mode":"UPI","note":"paint","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"_m":1787499784470},{"id":"mt4e2lvp89rlk","ts":1787403798854,"type":"rent","amount":10500,"date":"2026-08-22","mode":"Cash","note":"","person":"Absaar","category":null,"unitId":"mt4cncknw2ow6","unitLabel":"103","tenant":"Mansoor","propName":"Tolichowki","_m":1787496389848},{"id":"mt4e2mdpxz5te","ts":1787403799501,"type":"rent","amount":10500,"date":"2026-08-22","mode":"Cash","note":"","person":"Absaar","category":null,"unitId":"mt4cnkfxsrtjm","unitLabel":"104","tenant":"Sultan","propName":"Tolichowki","_m":1787496389848},{"id":"mt4e514t192y9","ts":1787403911933,"type":"rent","amount":10000,"date":"2026-08-22","mode":"Cash","note":"","person":"Absaar","category":null,"unitId":"mt4cnu9xa59v1","unitLabel":"201","tenant":"Naseem","propName":"Tolichowki","_m":1787496389848},{"id":"mt4e5hlhhc50p","ts":1787403933269,"type":"rent","amount":10500,"date":"2026-08-22","mode":"Cash","note":"","person":"Absaar","category":null,"unitId":"mt4cmt9whgk37","unitLabel":"101","tenant":"Auto Guy","propName":"Tolichowki","_m":1787496389848},{"id":"mt4hrnfc7m24p","ts":1787410006104,"type":"rent","amount":10000,"date":"2026-08-22","mode":"Cash","note":"","person":"Absaar","category":null,"unitId":"mt4co5v17w4du","unitLabel":"202","tenant":"Abid","propName":"Tolichowki","_m":1787496389848},{"id":"mt4hro8ak936i","ts":1787410007146,"type":"rent","amount":10000,"date":"2026-08-22","mode":"Cash","note":"","person":"Absaar","category":null,"unitId":"mt4codugfvk6x","unitLabel":"203","tenant":"Nisar","propName":"Tolichowki","_m":1787496389848},{"id":"mt4hroife6b4u","ts":1787410007511,"type":"rent","amount":10000,"date":"2026-08-22","mode":"Cash","note":"","person":"Absaar","category":null,"unitId":"mt4comhvnp103","unitLabel":"204","tenant":"Aleem","propName":"Tolichowki","_m":1787496389848},{"id":"mt4hrp9ezmpah","ts":1787410008482,"type":"rent","amount":9500,"date":"2026-08-22","mode":"Cash","note":"","person":"Absaar","category":null,"unitId":"mt4cow6viqfhn","unitLabel":"301","tenant":"Osama","propName":"Tolichowki","_m":1787496389848},{"id":"mt4hrpi1yhhvn","ts":1787410008793,"type":"rent","amount":9500,"date":"2026-08-22","mode":"Cash","note":"","person":"Absaar","category":null,"unitId":"mt4cp641vi5cx","unitLabel":"302","tenant":"Farheen","propName":"Tolichowki","_m":1787496389848},{"id":"mt4hrpqyjs9rq","ts":1787410009114,"type":"rent","amount":9500,"date":"2026-08-22","mode":"Cash","note":"","person":"Absaar","category":null,"unitId":"mt4cpgsmk1twb","unitLabel":"303","tenant":"Bilquis","propName":"Tolichowki","_m":1787496389848},{"id":"mt4hrq48ycd1d","ts":1787410009592,"type":"rent","amount":9500,"date":"2026-08-22","mode":"Cash","note":"","person":"Absaar","category":null,"unitId":"mt4cpsqq01tkx","unitLabel":"304","tenant":"Imtiyaz","propName":"Tolichowki","_m":1787496389848},{"id":"mt4hrr7bh889y","ts":1787410010999,"type":"rent","amount":11000,"date":"2026-08-22","mode":"Cash","note":"","person":"Absaar","category":null,"unitId":"mt4cr3ybt3llz","unitLabel":"Shoes Shop","tenant":"Akbar","propName":"Santoshnagar","_m":1787496389848},{"id":"mt4hrrfssiu0c","ts":1787410011304,"type":"rent","amount":10000,"date":"2026-08-22","mode":"Cash","note":"","person":"Absaar","category":null,"unitId":"mt4crg7k64wov","unitLabel":"Aluminium Shop","tenant":"Arshad","propName":"Santoshnagar","_m":1787496389848},{"id":"mt4hrrnqdme1x","ts":1787410011590,"type":"rent","amount":9000,"date":"2026-08-22","mode":"Cash","note":"","person":"Absaar","category":null,"unitId":"mt4crw8prxzgr","unitLabel":"Flat","tenant":"Raoof D&D","propName":"Santoshnagar","_m":1787496389848},{"id":"mt4hrsc7svmw8","ts":1787410012471,"type":"rent","amount":12000,"date":"2026-08-22","mode":"Cash","note":"","person":"Absaar","category":null,"unitId":"mt4csrm0zxrdo","unitLabel":"Battery Shop","tenant":"Shahid","propName":"Babanagar","_m":1787496389848},{"id":"mt4hrszkxalsd","ts":1787410013312,"type":"rent","amount":10000,"date":"2026-08-22","mode":"Cash","note":"","person":"Absaar","category":null,"unitId":"mt4cte08shvp6","unitLabel":"Flower Shop","tenant":"Kaleem Phool","propName":"Babanagar","_m":1787496389848},{"id":"mt4hrtn0jkxjw","ts":1787410014156,"type":"rent","amount":10000,"date":"2026-08-22","mode":"Cash","note":"","person":"Absaar","category":null,"unitId":"mt4cumhvqdoq1","unitLabel":"Chai Tea Shop","tenant":"Chai Guy","propName":"Babanagar","_m":1787496389848},{"id":"mt4hrtxsz36k2","ts":1787410014544,"type":"rent","amount":8500,"date":"2026-08-22","mode":"Cash","note":"","person":"Absaar","category":null,"unitId":"mt4cv74sz9na2","unitLabel":"Pan Shop","tenant":"Amer","propName":"Babanagar","_m":1787496389848},{"id":"mt4hrulnw78x0","ts":1787410015403,"type":"rent","amount":8500,"date":"2026-08-22","mode":"Cash","note":"","person":"Absaar","category":null,"unitId":"mt4cvhtuzmwdg","unitLabel":"Cycle Bike Shop","tenant":"Siraj","propName":"Babanagar","_m":1787496389848},{"id":"mt4hrv0g602n9","ts":1787410015936,"type":"rent","amount":6500,"date":"2026-08-22","mode":"Cash","note":"","person":"Absaar","category":null,"unitId":"mt4cvyz902nww","unitLabel":"Cosmetic Mehndi Shop","tenant":"Ghayas","propName":"Babanagar","_m":1787496389848},{"type":"expense","amount":193692,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Mum Past Dues","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5y1mxfey3c0","ts":1787497812051,"_m":1787497917179},{"type":"expense","amount":1089,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Grocery","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5y2vhn4cz12","ts":1787497869803,"_m":1787497869803},{"type":"expense","amount":440,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Grocery","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5y6jrkzb180","ts":1787498041232,"_m":1787498041232},{"type":"expense","amount":1000,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Cash Mom","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5y72kh95et4","ts":1787498065601,"_m":1787498065601},{"type":"expense","amount":10000,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Cash Mom","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5y7fazic2yn","ts":1787498082107,"_m":1787498082107},{"type":"expense","amount":4948,"date":"2026-08-23","mode":"Cash","note":"Ghar bill","person":"Absaar","category":"Utilities","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5y7qh20xn7q","ts":1787498096582,"_m":1787498096582},{"type":"expense","amount":469,"date":"2026-08-23","mode":"Card","note":"Tolichowki bill","person":"Absaar","category":"Utilities","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5y82vcte976","ts":1787498112648,"_m":1787498112648},{"type":"expense","amount":5032,"date":"2026-08-23","mode":"Cash","note":"Tolivhowki bill","person":"Absaar","category":"Utilities","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5y8ph7e5tmh","ts":1787498141947,"_m":1787498141947},{"type":"expense","amount":7500,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Cash Mom","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5y8v6w5oxjg","ts":1787498149352,"_m":1787498149352},{"type":"expense","amount":360,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Fruits","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5y9x3hnmf4m","ts":1787498198477,"_m":1787498198477},{"type":"expense","amount":5000,"date":"2026-08-23","mode":"Cash","note":"Noora baji","person":"Absaar","category":"Staff","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5ya7ocfzxir","ts":1787498212188,"_m":1787498212188},{"type":"expense","amount":6016,"date":"2026-08-23","mode":"Cash","note":"Medical hall","person":"Absaar","category":"Medical","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5yafca2l7ol","ts":1787498222122,"_m":1787498229516},{"type":"expense","amount":6940,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Omer kirana","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5yhpjvh0zim","ts":1787498561947,"_m":1787498572795},{"type":"expense","amount":5882,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Bazu Kirana","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5yi86lee06y","ts":1787498586093,"_m":1787498586093},{"type":"expense","amount":10000,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Cash Mom","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5yifupx4v2n","ts":1787498596033,"_m":1787498596033},{"type":"expense","amount":1020,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Cash Mom","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5yitx6l92or","ts":1787498614266,"_m":1787498620064},{"type":"expense","amount":5500,"date":"2026-08-23","mode":"Cash","note":"Apnea sleep","person":"Absaar","category":"Medical","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5yj93vru568","ts":1787498633947,"_m":1787498633947},{"type":"expense","amount":5000,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Cash Mom","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5yjfw4ga6wq","ts":1787498642740,"_m":1787498642740},{"type":"expense","amount":2610,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Grocery","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5yjqi8gm7v8","ts":1787498656496,"_m":1787498656496},{"type":"expense","amount":1500,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Cash Mom","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5yjy0oaksxf","ts":1787498666232,"_m":1787498666232},{"type":"expense","amount":1261,"date":"2026-08-23","mode":"Cash","note":"Sugar amchine","person":"Absaar","category":"Medical","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5ykblklgg7f","ts":1787498683832,"_m":1787498683832},{"type":"expense","amount":5000,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Cash Mom","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5ykfu561cov","ts":1787498689325,"_m":1787498689325},{"type":"expense","amount":928,"date":"2026-08-23","mode":"Cash","note":"Medical","person":"Absaar","category":"Medical","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5yky860a3ez","ts":1787498713158,"_m":1787498713158},{"type":"expense","amount":11760,"date":"2026-08-23","mode":"Cash","note":"Shopping meghalaya","person":"Absaar","category":"Other","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5ylhsxi3d4q","ts":1787498738529,"_m":1787498738529},{"type":"expense","amount":880,"date":"2026-08-23","mode":"Cash","note":"Honey","person":"Absaar","category":"Grocery","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5ylqd0bwcd4","ts":1787498749620,"_m":1787498749620},{"type":"expense","amount":419,"date":"2026-08-23","mode":"Cash","note":"Medixal","person":"Absaar","category":"Medical","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5ylym377ha7","ts":1787498760315,"_m":1787498760315},{"type":"expense","amount":2000,"date":"2026-08-23","mode":"Cash","note":"Aafreen","person":"Absaar","category":"Staff","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5ym6b7vbcq4","ts":1787498770291,"_m":1787498770291},{"type":"expense","amount":1900,"date":"2026-08-23","mode":"Cash","note":"Paint","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5ymn51d44ze","ts":1787498792101,"_m":1787498807663},{"type":"expense","amount":1200,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5yz107bo99h","ts":1787499369943,"_m":1787499369943},{"type":"expense","amount":2220,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Grocery","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5yz6qx7859x","ts":1787499377385,"_m":1787499377385},{"type":"expense","amount":5000,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Cash Mom","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5yzg50jyot4","ts":1787499389556,"_m":1787499389556},{"type":"expense","amount":12500,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Chitti","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5yzqm3cca8h","ts":1787499403131,"_m":1787499403131},{"type":"expense","amount":1900,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5yzytisx8e2","ts":1787499413766,"_m":1787499413766},{"type":"expense","amount":650,"date":"2026-08-23","mode":"Cash","note":"Paint","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z075a50xto","ts":1787499424558,"_m":1787499424558},{"type":"expense","amount":6000,"date":"2026-08-23","mode":"Cash","note":"Msulans","person":"Absaar","category":"Staff","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z0er7qg5tm","ts":1787499434419,"_m":1787499434419},{"type":"expense","amount":560,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Fuel","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z0ml6ll8qn","ts":1787499444570,"_m":1787499452944},{"type":"expense","amount":1580,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z108q5r4jm","ts":1787499462266,"_m":1787499462266},{"type":"expense","amount":400,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z15rj882sz","ts":1787499469423,"_m":1787499469423},{"type":"expense","amount":1700,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z19mj5itkz","ts":1787499474427,"_m":1787499474427},{"type":"expense","amount":400,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z1iq4w1n03","ts":1787499486220,"_m":1787499486220},{"type":"expense","amount":470,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z1m1itm6mq","ts":1787499490518,"_m":1787499490518},{"type":"expense","amount":800,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z1plpto6w1","ts":1787499495133,"_m":1787499495133},{"type":"expense","amount":1500,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z1tsx6s65p","ts":1787499500577,"_m":1787499500577},{"type":"given","amount":8500,"date":"2026-08-23","mode":"Cash","note":"Ac","person":"Absaar","category":null,"unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z2pr0teu3w","ts":1787499541980,"_m":1787499541980},{"type":"expense","amount":30000,"date":"2026-08-23","mode":"Cash","note":"Salaries","person":"Absaar","category":"Staff","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z3ao5kyf2v","ts":1787499569093,"_m":1787499569093},{"type":"expense","amount":1000,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Cash Mom","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z3fj83sh85","ts":1787499575396,"_m":1787499575396},{"type":"expense","amount":2500,"date":"2026-08-23","mode":"Cash","note":"Pakwan advance","person":"Absaar","category":"Staff","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z3ovgzqhrv","ts":1787499587500,"_m":1787499587500},{"type":"expense","amount":880,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Cash Mom","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z3tf5mbwwo","ts":1787499593393,"_m":1787499593393},{"type":"expense","amount":1500,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Cash Mom","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z3wf9j1rlv","ts":1787499597285,"_m":1787499597285},{"type":"expense","amount":3500,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z414p28dxk","ts":1787499603385,"_m":1787499603385},{"type":"expense","amount":4843,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Medical","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z45jt5sn49","ts":1787499609113,"_m":1787499609113},{"type":"expense","amount":500,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Utilities","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z4904gx43l","ts":1787499613588,"_m":1787499613588},{"type":"expense","amount":1359,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Grocery","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z4db7xazwn","ts":1787499619171,"_m":1787499619171},{"type":"expense","amount":2800,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z4gs68yg5b","ts":1787499623670,"_m":1787499623670},{"type":"expense","amount":425,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Fuel","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z4k68klj3n","ts":1787499628064,"_m":1787499628064},{"type":"expense","amount":59,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Eating Out","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z4q9vff5x1","ts":1787499635971,"_m":1787499635971},{"type":"expense","amount":9035,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Grocery","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z4vpv5i9ij","ts":1787499643027,"_m":1787499643027},{"type":"expense","amount":408,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z518bfb1m6","ts":1787499650171,"_m":1787499650171},{"type":"expense","amount":5000,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Cash Mom","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z557mwygx5","ts":1787499655330,"_m":1787499655330},{"type":"expense","amount":186,"date":"2026-08-23","mode":"Cash","note":"Rice","person":"Absaar","category":"Grocery","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z5hbywh1xz","ts":1787499671038,"_m":1787499671038},{"type":"expense","amount":800,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z5koetr56f","ts":1787499675374,"_m":1787499675374},{"type":"expense","amount":5000,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Cash Mom","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z5sszgr6t6","ts":1787499685907,"_m":1787499685907},{"type":"expense","amount":1500,"date":"2026-08-23","mode":"Cash","note":"","person":"Absaar","category":"Fruits","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt5z7e9ffyxhi","ts":1787499760371,"_m":1787499760371},{"type":"expense","amount":50,"date":"2026-08-24","mode":"Cash","note":"","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt713hsx7qo1k","ts":1787563403745,"_m":1787563403745},{"type":"expense","amount":730,"date":"2026-08-24","mode":"Cash","note":"Paint","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt713r56ic70l","ts":1787563415850,"_m":1787563415850},{"type":"expense","amount":130,"date":"2026-08-24","mode":"Cash","note":"Paint","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt714256lp0hw","ts":1787563430106,"_m":1787563430106},{"type":"expense","amount":1000,"date":"2026-08-24","mode":"Cash","note":"","person":"Absaar","category":"Bazu Kirana","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt75an18w65m6","ts":1787570455580,"_m":1787570466771},{"type":"expense","amount":1400,"date":"2026-08-24","mode":"Cash","note":"Wallpaper","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt78dz1912los","ts":1787575649949,"_m":1787575649949},{"type":"expense","amount":2200,"date":"2026-08-24","mode":"Cash","note":"Biryani","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt7aupwqg9rb8","ts":1787579790506,"_m":1787579790506},{"type":"expense","amount":170,"date":"2026-08-24","mode":"Cash","note":"","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt7boflo5hjdh","ts":1787581176828,"_m":1787581176828},{"type":"expense","amount":10000,"date":"2026-08-24","mode":"Cash","note":"","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt7iluiyjjb68","ts":1787592813515,"_m":1787592813515},{"type":"expense","amount":5475,"date":"2026-08-24","mode":"Cash","note":"Bill ghar","person":"Absaar","category":"Utilities","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt7kcnmqgeskq","ts":1787595743906,"_m":1787595743906},{"type":"expense","amount":3036,"date":"2026-08-24","mode":"Cash","note":"Tolichowki bill","person":"Absaar","category":"Utilities","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt7kdcvkmdsw0","ts":1787595776624,"_m":1787595776624},{"type":"expense","amount":235,"date":"2026-08-24","mode":"Cash","note":"Bill tolichowki","person":"Absaar","category":"Utilities","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt7kdfq3ztaur","ts":1787595780315,"_m":1787595789337},{"type":"expense","amount":15000,"date":"2026-08-25","mode":"Cash","note":"Cash for shopping","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt8djoemsm8y0","ts":1787644780366,"_m":1787644870337},{"type":"expense","amount":1600,"date":"2026-08-26","mode":"Cash","note":"Bawarchu","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt93o3v4kj7om","ts":1787688657040,"_m":1787688670775},{"type":"expense","amount":39000,"date":"2026-08-26","mode":"Cash","note":"Cook","person":"Absaar","category":"Milad Exp","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mt9tyhx11z4a2","ts":1787732811829,"_m":1787732811829},{"type":"expense","amount":450,"date":"2026-08-27","mode":"Cash","note":"","person":"Absaar","category":"Fuel","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mtbcpumfu9y00","ts":1787824787271,"_m":1787824787271},{"type":"expense","amount":6000,"date":"2026-08-27","mode":"Cash","note":"","person":"Absaar","category":"Cash Mom","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mtbcvbb5ojdyb","ts":1787825042177,"_m":1787825042177},{"type":"expense","amount":2000,"date":"2026-08-27","mode":"Cash","note":"Ammar for emi and others","person":"Absaar","category":"Cash Mom","unitId":null,"unitLabel":null,"tenant":null,"propName":null,"id":"mtbkqmeesd10d","ts":1787838260198,"_m":1787838260198}],"config":{"people":["Absaar","Ammar"],"categories":["Grocery","Cash Given","Utilities","Maintenance","Repairs","Staff","Medical","Fuel","Eating Out","Other","Mum Past Dues","Cash Mom","Fruits","Omer kirana","Bazu Kirana","Milad Exp","Chitti","Petrol"],"properties":[{"id":"mt4clj7jcpgq2","name":"Tolichowki","units":[{"id":"mt4cmt9whgk37","label":"101","rent":10500,"tenant":"Auto Guy"},{"id":"mt4cn3o3bqvn3","label":"102","rent":10500,"tenant":"Rizwan"},{"id":"mt4cncknw2ow6","label":"103","rent":10500,"tenant":"Mansoor"},{"id":"mt4cnkfxsrtjm","label":"104","rent":10500,"tenant":"Sultan"},{"id":"mt4cnu9xa59v1","label":"201","rent":10000,"tenant":"Naseem"},{"id":"mt4co5v17w4du","label":"202","rent":10000,"tenant":"Abid"},{"id":"mt4codugfvk6x","label":"203","rent":10000,"tenant":"Nisar"},{"id":"mt4comhvnp103","label":"204","rent":10000,"tenant":"Aleem"},{"id":"mt4cow6viqfhn","label":"301","rent":9500,"tenant":"Osama"},{"id":"mt4cp641vi5cx","label":"302","rent":9500,"tenant":"Farheen"},{"id":"mt4cpgsmk1twb","label":"303","rent":9500,"tenant":"Bilquis"},{"id":"mt4cpsqq01tkx","label":"304","rent":9500,"tenant":"Imtiyaz"}]},{"id":"mt4cq1uqexl4r","name":"Santoshnagar","units":[{"id":"mt4cr3ybt3llz","label":"Shoes Shop","rent":11000,"tenant":"Akbar"},{"id":"mt4crg7k64wov","label":"Aluminium Shop","rent":10000,"tenant":"Arshad"},{"id":"mt4crw8prxzgr","label":"Flat","rent":9000,"tenant":"Raoof D&D"}]},{"id":"mt4cs4edar3st","name":"Babanagar","units":[{"id":"mt4csrm0zxrdo","label":"Battery Shop","rent":12000,"tenant":"Shahid"},{"id":"mt4cte08shvp6","label":"Flower Shop","rent":10000,"tenant":"Kaleem Phool"},{"id":"mt4cu6k3gyge9","label":"Mutton Shop","rent":7000,"tenant":"Khaja Rashed"},{"id":"mt4cumhvqdoq1","label":"Chai Tea Shop","rent":10000,"tenant":"Chai Guy"},{"id":"mt4cv74sz9na2","label":"Pan Shop","rent":8500,"tenant":"Amer"},{"id":"mt4cvhtuzmwdg","label":"Cycle Bike Shop","rent":8500,"tenant":"Siraj"},{"id":"mt4cvyz902nww","label":"Cosmetic Mehndi Shop","rent":6500,"tenant":"Ghayas"}]}],"givenIsSpend":false,"_m":1787838246966}};
+function pull(){
+  var c=load(K_CFG,null),e=load(K_ENT,null);
+  if(!c&&!e&&SEED_LEDGER){ c=SEED_LEDGER.config; e=SEED_LEDGER.entries;
+    store(K_CFG,c);store(K_ENT,e); }
+  if(c){S.cfg={people:(c.people&&c.people.length)?c.people:DEFAULT_CFG.people.slice(),
+    categories:(c.categories&&c.categories.length)?c.categories:PRESET_CATS.slice(),
+    properties:c.properties||[],givenIsSpend:!!c.givenIsSpend,_m:c._m||0}}
+  S.entries=Array.isArray(e)?e:[];
+  S.light=load(K_THEME,false)===true;
+}
+function saveCfg(){S.cfg._m=Date.now();store(K_CFG,S.cfg);syncPush()}
+function saveEnt(){store(K_ENT,S.entries);syncPush()}
+
+/* ---------------------- cloud sync (Firebase) ---------------------- */
+var SYNC={on:false,user:null,busy:false,applying:false,lastAt:0,sawWealth:false};
+
+function syncAvailable(){return !!(window.HisaabSync&&window.HisaabSync.enabled)}
+
+// merge a remote snapshot into local state, entry-by-entry, newest field wins by ts
+// tombstones we know about locally, so a deletion is never resurrected by an old push
+var TOMB=load('hisaab:tomb',{});   // { id: _m }
+function saveTomb(){store('hisaab:tomb',TOMB)}
+
+// recently-deleted bin: entries stay recoverable for a week
+var TRASH_DAYS=7, TRASH_MS=TRASH_DAYS*86400000;
+var TRASH=load('hisaab:trash',[]);
+function saveTrash(){store('hisaab:trash',TRASH)}
+function tooOld(t){return !t||(Date.now()-t)>TRASH_MS}
+function pruneTrash(){
+  var before=TRASH.length;
+  TRASH=TRASH.filter(function(e){return !tooOld(e._delAt)});
+  if(TRASH.length!==before)saveTrash();
+}
+
+function trashEntry(id){
+  var e=null;S.entries.forEach(function(x){if(x.id===id)e=x});
+  var now=Date.now();
+  TOMB[id]=now;
+  if(e){var c={};for(var k in e)c[k]=e[k];c._delAt=now;c._m=now;TRASH.push(c);}
+  S.entries=S.entries.filter(function(x){return x.id!==id});
+  saveTomb();saveTrash();
+  if(SYNC.on&&syncAvailable()&&SYNC.user&&e){
+    var d={};for(var k2 in e)d[k2]=e[k2];
+    d._deleted=true;d._delAt=now;d._m=now;
+    var o={};o['entries/'+id]=d;window.HisaabSync.push(o);
+  }
+}
+
+function restoreEntry(id){
+  var e=null;TRASH.forEach(function(x){if(x.id===id)e=x});
+  if(!e)return false;
+  TRASH=TRASH.filter(function(x){return x.id!==id});
+  delete TOMB[id];
+  var c={};for(var k in e)c[k]=e[k];
+  delete c._delAt;delete c._deleted;c._m=Date.now();
+  S.entries.push(c);
+  saveTomb();saveTrash();saveEnt();
+  return true;
+}
+
+function purgeEntry(id){
+  TRASH=TRASH.filter(function(x){return x.id!==id});
+  TOMB[id]=Date.now();
+  saveTrash();saveTomb();
+  if(SYNC.on&&syncAvailable()&&SYNC.user){
+    var o={};o['entries/'+id]={_deleted:true,_m:TOMB[id],_purged:true};
+    window.HisaabSync.push(o);
+  }
+}
+
+function mergeRemote(remote){
+  if(!remote)return false;
+  var changed=false;
+  var rEnt=remote.entries||{};
+  var byId={};S.entries.forEach(function(e){byId[e.id]=e});
+  var inTrash={};TRASH.forEach(function(e){inTrash[e.id]=e});
+  Object.keys(rEnt).forEach(function(id){
+    var re=rEnt[id]; if(!re)return;
+    if(re._deleted){
+      if(!TOMB[id]||(re._m||0)>TOMB[id]){TOMB[id]=re._m||Date.now();changed=true;}
+      if(byId[id]){S.entries=S.entries.filter(function(e){return e.id!==id});changed=true;}
+      if(re._purged){
+        if(inTrash[id]){TRASH=TRASH.filter(function(e){return e.id!==id});changed=true;}
+      }else if(!inTrash[id]&&re.type&&!tooOld(re._delAt)){
+        var c={};for(var k in re)c[k]=re[k];delete c._deleted;
+        TRASH.push(c);changed=true;
+      }
+      return;
+    }
+    // a live record newer than our tombstone means it was restored on the other phone
+    if(TOMB[id]&&TOMB[id]>=(re._m||0))return;
+    if(TOMB[id]){
+      delete TOMB[id];
+      if(inTrash[id])TRASH=TRASH.filter(function(e){return e.id!==id});
+      changed=true;
+    }
+    var le=byId[id];
+    if(!le){ S.entries.push(re);changed=true; }
+    else if((re._m||0)>(le._m||0)){ for(var k2 in re)le[k2]=re[k2];changed=true; }
+  });
+  if(remote.wealth)SYNC.sawWealth=true;
+  if(remote.wealth&&(remote.wealth._m||0)>((W._m)||0)){
+    var rw=remote.wealth;
+    W={cards:rw.cards||[],banks:rw.banks||[],metals:rw.metals||[],
+       goldRate:+rw.goldRate||W.goldRate,silverRate:+rw.silverRate||W.silverRate,
+       liabilities:rw.liabilities||[],receivables:rw.receivables||[],sales:rw.sales||[],_m:rw._m||0};
+    store(K_W,W);changed=true;
+  }
+  if(remote.config&&(remote.config._m||0)>((S.cfg._m)||0)){
+    var cf=remote.config;
+    S.cfg={people:cf.people||S.cfg.people,categories:cf.categories||S.cfg.categories,
+      properties:cf.properties||S.cfg.properties,givenIsSpend:!!cf.givenIsSpend,_m:cf._m||0};
+    changed=true;
+  }
+  if(changed){store(K_ENT,S.entries);store(K_CFG,S.cfg);saveTomb();saveTrash();}
+  return changed;
+}
+
+function remoteHandler(val){
+  SYNC.applying=true;
+  var changed=mergeRemote(val);
+  SYNC.applying=false;
+  if(changed){renderAll();}
+}
+
+var pushTimer=null;
+function syncPush(){
+  if(!SYNC.on||SYNC.applying||!syncAvailable()||!SYNC.user)return;
+  clearTimeout(pushTimer);
+  pushTimer=setTimeout(doPush,300);
+}
+function doPush(){
+  if(!SYNC.on||!syncAvailable()||!SYNC.user)return;
+  var now=Date.now();
+  var payload={};
+  // write each live entry at its own path (never blows away others' entries)
+  S.entries.forEach(function(e){ if(!e._m)e._m=now; payload['entries/'+e.id]=e; });
+  // re-assert deletions so a peer's stale copy stays dead; trashed ones keep their data
+  var trashById={};TRASH.forEach(function(e){trashById[e.id]=e});
+  Object.keys(TOMB).forEach(function(id){
+    var t=trashById[id];
+    if(t){var d={};for(var k in t)d[k]=t[k];d._deleted=true;d._m=TOMB[id];payload['entries/'+id]=d;}
+    else payload['entries/'+id]={_deleted:true,_m:TOMB[id],_purged:true};
+  });
+  payload['config']={people:S.cfg.people,categories:S.cfg.categories,properties:S.cfg.properties,
+    givenIsSpend:!!S.cfg.givenIsSpend,_m:S.cfg._m||now};
+  if((W._m||0)>1||!SYNC.sawWealth){
+    payload['wealth']={cards:W.cards,banks:W.banks,metals:W.metals,goldRate:W.goldRate,
+      silverRate:W.silverRate,liabilities:W.liabilities,receivables:W.receivables,
+      sales:W.sales,_m:W._m||1};
+  }
+  store(K_ENT,S.entries);store(K_CFG,S.cfg);
+  window.HisaabSync.push(payload);
+}
+
+function syncStart(){
+  if(!syncAvailable())return;
+  window.__hisaabRemote=remoteHandler;
+  window.__hisaabAuthChanged=function(user){
+    SYNC.user=user; SYNC.on=!!user;
+    store('hisaab:sync', !!user);
+    if(user){ setTimeout(doPush,800); }  // seed cloud with local data on first sign-in
+    renderOverlay(false);
+  };
+  if(window.HisaabSync.user){SYNC.user=window.HisaabSync.user;SYNC.on=true;}
+}
+
+var toastTimer=null;
+function ping(m){S.toast=m;renderToast();clearTimeout(toastTimer);
+  toastTimer=setTimeout(function(){S.toast='';renderToast()},1900)}
+
+function sortedEntries(){return S.entries.slice().sort(function(a,b){
+  if(a.date===b.date)return(a.ts||0)-(b.ts||0);return a.date<b.date?-1:1})}
+function delta(e){if(e.type==='rent'||e.type==='received')return e.amount;if(e.type==='expense')return -e.amount;
+  return S.cfg.givenIsSpend?-e.amount:0}
+function computeBalances(){var l=sortedEntries(),r=0,m={};
+  for(var i=0;i<l.length;i++){r+=delta(l[i]);m[l[i].id]=r}return{list:l,pool:r,map:m}}
+function allUnits(){var o=[];S.cfg.properties.forEach(function(p){(p.units||[]).forEach(function(u){
+  o.push({id:u.id,label:u.label,tenant:u.tenant,rent:u.rent,propId:p.id,propName:p.name})})});return o}
+function findUnit(id){var f=null;allUnits().forEach(function(u){if(u.id===id)f=u});return f}
+function rentStatus(month){
+  var units=allUnits(),paid={},got=0,expected=0;
+  S.entries.forEach(function(e){if(e.type==='rent'&&e.unitId&&mKey(e.date)===month)paid[e.unitId]=e});
+  units.forEach(function(u){expected+=Number(u.rent)||0;if(paid[u.id])got+=paid[u.id].amount});
+  return{paid:paid,expected:expected,got:got,count:Object.keys(paid).length,total:units.length}}
+function sumType(l,t){var s=0;l.forEach(function(e){if(e.type===t)s+=e.amount});return s}
+
+/* ------------------------------ views ------------------------------ */
+function header(){
+  return '<header class="hd"><div class="hd-name">Float<span class="dot">.</span></div><div class="hd-sp"></div>'
+  +'<div class="mo"><button data-a="month" data-v="-1" aria-label="Previous month">'+I.left+'</button>'
+  +'<span class="mono">'+esc(mLabel(S.month))+'</span>'
+  +'<button data-a="month" data-v="1" aria-label="Next month">'+I.right+'</button></div>'
+  +'<button class="ibtn" data-a="theme" aria-label="Toggle light or dark">'+(S.light?I.sun:I.moon)+'</button>'
+  +'<button class="ibtn" data-a="setup-open" aria-label="Setup">'+I.gear+'</button></header>'}
+
+var SPROUT='<svg width="76" height="76" viewBox="0 0 76 76" fill="none">'
+ +'<ellipse cx="38" cy="67" rx="18" ry="3.4" fill="#B78A5E" opacity=".16"/>'
+ +'<path d="M38 56V33" stroke="#2E9E5B" stroke-width="3" stroke-linecap="round"/>'
+ +'<path d="M38 38c-1.4-10-9-14.6-16-14.6C22 32.6 28 38 38 38z" fill="#7CC183"/>'
+ +'<path d="M38 33c1.2-11 8.8-16 16.4-16C54.4 27.4 48 33 38 33z" fill="#2E9E5B"/>'
+ +'<circle cx="38" cy="55" r="11" fill="#F3C24B" stroke="#DDA52C" stroke-width="2"/>'
+ +'<text x="38" y="60.5" text-anchor="middle" font-size="13" font-weight="700" fill="#8A6410" font-family="Georgia,serif">\u20b9</text>'
+ +'<circle cx="20" cy="20" r="2" fill="#8FCB92"/><circle cx="58" cy="26" r="1.6" fill="#F3C24B"/>'
+ +'<circle cx="52" cy="12" r="1.4" fill="#8FCB92"/><circle cx="26" cy="34" r="1.4" fill="#F3C24B" opacity=".7"/></svg>';
+function emptyBox(t,l,a,c){return '<div class="empty">'
+  +'<h4>'+esc(t)+'</h4><p>'+esc(l)+'</p>'
+  +(a?'<button class="cta" data-a="'+a+'">'+esc(c||'Add an entry')+'</button>':'')+'</div>'}
+
+function entryTitle(e){
+  return e.type==='rent'?((e.unitLabel||'Rent')+(e.tenant?' \u00b7 '+e.tenant:''))
+    :e.type==='received'?('Received from '+(e.person||'someone'))
+    :(e.type==='given'?'To '+(e.person||''):(e.category||'Uncategorised'));
+}
+
+function ledgerRow(e,balance){
+  var d=e.date||'',open=S.openRow===e.id;
+  var cls=(e.type==='rent'||e.type==='received')?'in':(e.type==='given'?'mv':'out');
+  var sign=(e.type==='rent'||e.type==='received')?'+':(e.type==='given'?'\u2192':'\u2212');
+  var title=entryTitle(e);
+  var bits=[];
+  if(e.type==='rent'){if(e.propName)bits.push(e.propName)}
+  else if(e.type==='received'){ /* person already named in title */ }
+  else if(e.person)bits.push(e.person);
+  if(e.mode)bits.push(e.mode); if(e.note)bits.push(e.note);
+  var right=open
+    ?'<div class="rowbtns">'
+      +'<button data-a="row-edit" data-v="'+e.id+'" aria-label="Edit">'+I.pencil+'</button>'
+      +'<button data-a="row-clone" data-v="'+e.id+'" aria-label="Repeat">'+I.rotate+'</button>'
+      +'<button data-a="row-del" data-v="'+e.id+'" aria-label="Delete">'+I.trash+'</button></div>'
+    :'<div class="row-r"><div class="row-a mono '+cls+'">'+sign+'\u20b9'+inr(e.amount)+'</div>'
+      +(balance!==undefined?'<div class="row-bal mono"'+(balance<0?' style="color:var(--verm)"':'')+'>'
+        +(balance<0?'\u2212':'')+'\u20b9'+inr(balance)+'</div>':'')+'</div>';
+  return '<div class="row" data-a="row-toggle" data-v="'+e.id+'">'
+    +'<div class="row-d mono"><div class="dd">'+esc(d.slice(8))+'</div><div class="mm">'+esc(MON[+d.slice(5,7)-1]||'')+'</div></div>'
+    +'<div class="row-b"><div class="row-t">'+esc(title)+'</div>'+(bits.length?'<div class="row-s">'+esc(bits.join(' \u00b7 '))+'</div>':'')+'</div>'
+    +right+'</div>'}
+
+function viewBalance(){
+  var b=computeBalances(),pool=b.pool;
+  var ml=b.list.filter(function(e){return mKey(e.date)===S.month});
+  var mIn=sumType(ml,'rent')+sumType(ml,'received'),mOut=sumType(ml,'expense')+(S.cfg.givenIsSpend?sumType(ml,'given'):0);
+  var rs=rentStatus(S.month);
+  var pct=rs.expected>0?Math.min(100,(rs.got/rs.expected)*100):(rs.total>0?(rs.count/rs.total)*100:0);
+  var day=new Date().getDate(),isNow=S.month===mKey(todayISO()),mn=MON[+S.month.slice(5,7)-1];
+
+  var h='<div class="hero"><div class="hero-lbl2"><span class="eyebrow">In hand</span>'
+   +'<span style="font-size:11px;color:var(--muted)">\u00b7 carried forward</span></div>'
+   +'<div class="hero-num'+(pool<0?' hero-neg':'')+'">'+(pool<0?'\u2212':'')+'<span class="r">\u20b9</span>'+inr(pool)+'</div>'
+   +'<div class="hero-split">'
+   +'<div class="split"><div class="k">In \u00b7 '+esc(mn)+'</div><div class="v mono in">\u20b9'+inr(mIn)+'</div></div>'
+   +'<div class="split"><div class="k">Out \u00b7 '+esc(mn)+'</div><div class="v mono out">\u20b9'+inr(mOut)+'</div></div>'
+   +'</div></div>';
+
+  if(rs.total>0){h+='<div class="wrap"><div class="card coll">'
+   +'<div class="coll-top"><b>Rent collection</b><span class="n mono">'+rs.count+'/'+rs.total+' units</span></div>'
+   +'<div class="bar"><i style="width:'+pct.toFixed(1)+'%"></i></div>'
+   +'<div class="coll-note">Collected <b class="mono">\u20b9'+inr(rs.got)+'</b>'
+   +(rs.expected>0?' of \u20b9'+inr(rs.expected)+' expected':' so far')
+   +(isNow&&day<=22?' \u00b7 '+(22-day===0?'last day':(22-day)+' days')+' left in the cycle':'')
+   +'</div></div></div>'}
+
+  var recent=b.list.slice().reverse().slice(0,40);
+  h+='<div class="wrap sect"><div class="sect-hd"><span class="eyebrow">Everything, newest first</span>'
+   +'<span class="eyebrow mono">Balance \u2192</span></div>'
+   +(recent.length===0?emptyBox('Nothing written down yet','Tap + to record your first expense or rent.','add-expense')
+     :'<div class="ledger">'+recent.map(function(e){return ledgerRow(e,b.map[e.id])}).join('')+'</div>')
+   +'</div>';
+  return h}
+
+function viewRents(){
+  var rs=rentStatus(S.month),units=allUnits();
+  var h='<div class="wrap" style="padding-top:20px">'
+   +'<div class="hero-lbl"><span class="eyebrow">Rent received \u00b7 '+esc(mLabel(S.month))+'</span></div>'
+   +'<div class="hero-num in" style="font-size:42px"><span class="r">\u20b9</span>'+inr(rs.got)+'</div>';
+  if(rs.expected>0)h+='<div class="mono" style="font-size:12.5px;color:var(--muted);margin-top:8px">\u20b9'
+   +inr(Math.max(0,rs.expected-rs.got))+' still to come in</div>';
+
+  if(units.length===0){
+    h+='<div class="sect">'+emptyBox('No properties set up','Add your buildings, flats and tenants once \u2014 then rent is one tap.','setup-open','Set up properties')+'</div>';
+  }else{
+    S.cfg.properties.forEach(function(p){
+      h+='<div class="sect"><div class="estate"><b>'+esc(p.name)+'</b>'
+        +'<button class="ed" data-a="prop-open-edit" data-v="'+p.id+'" aria-label="Rename estate">'+I.pencil+'</button>'
+        +'<span class="hint">tap a unit to edit</span></div><div class="card" style="padding:2px 15px">';
+      var us=p.units||[];
+      if(!us.length)h+='<div style="padding:16px 0;font-size:12.5px;color:var(--muted)">No units added yet.</div>';
+      us.forEach(function(u){
+        var hit=rs.paid[u.id];
+        h+='<div class="unit" data-a="unit-open" data-v="'+p.id+'|'+u.id+'">'
+          +'<div class="tag mono'+(hit?' paid':'')+'">'+(hit?I.check:esc((u.label||'?').slice(0,4)))+'</div>'
+          +'<div class="bd"><b>'+esc(u.label)+'</b><s>'+esc(u.tenant||'No tenant name')
+          +(hit?' \u00b7 paid '+(+hit.date.slice(8))+' '+MON[+hit.date.slice(5,7)-1]:'')+'</s></div>';
+        if(hit){
+          h+='<div class="rt"><div class="a mono in">\u20b9'+inr(hit.amount)+'</div>'
+            +'<div class="st" style="color:var(--brass)">Received</div></div>'
+            +'<button class="undobtn" data-a="unit-undo" data-v="'+hit.id+'">Undo</button>';
+        }else if(Number(u.rent)>0){
+          h+='<div class="rt"><div class="a mono" style="color:var(--muted)">\u20b9'+inr(u.rent)+'</div>'
+            +'<div class="st" style="color:var(--muted)">Due</div></div>'
+            +'<button class="paidbtn" data-a="unit-paid" data-v="'+u.id+'">Paid</button>';
+        }else{
+          h+='<div class="rt"><div class="a mono" style="color:var(--muted)">\u2014</div>'
+            +'<div class="st" style="color:var(--muted)">No rent set</div></div>'
+            +'<button class="undobtn" data-a="unit-enter" data-v="'+u.id+'">Enter</button>';
+        }
+        h+='</div>';
+      });
+      h+='</div></div>';
+    });
+  }
+
+  var rents=S.entries.filter(function(e){return e.type==='rent'&&mKey(e.date)===S.month})
+    .sort(function(a,b){return a.date<b.date?1:-1});
+  h+='<div class="sect"><div class="sect-hd"><span class="eyebrow">Payments this month</span></div>'
+   +(rents.length===0?emptyBox('No rent logged this month','Tap Paid beside a unit, or + to enter it.','add-rent')
+     :'<div class="ledger">'+rents.map(function(e){return ledgerRow(e)}).join('')+'</div>')
+   +'</div></div>';
+  return h}
+
+function viewSpend(){
+  var all=sortedEntries();
+  var mo=all.filter(function(e){return mKey(e.date)===S.month&&e.type==='expense'});
+  var total=mo.reduce(function(s,e){return s+e.amount},0);
+  var cm={};mo.forEach(function(e){var k=e.category||'Uncategorised';cm[k]=(cm[k]||0)+e.amount});
+  var cats=Object.keys(cm).map(function(k){return[k,cm[k]]}).sort(function(a,b){return b[1]-a[1]});
+  var top=cats.length?cats[0][1]:1;
+  var keys=[],k=S.month;for(var i=0;i<6;i++){keys.unshift(k);k=shiftM(k,-1)}
+  var months=keys.map(function(key){var set=all.filter(function(e){return mKey(e.date)===key});
+    return{key:key,inn:sumType(set,'rent')+sumType(set,'received'),out:sumType(set,'expense')+(S.cfg.givenIsSpend?sumType(set,'given'):0)}});
+  var peak=1;months.forEach(function(m){peak=Math.max(peak,m.inn,m.out)});
+
+  var h='<div class="wrap" style="padding-top:20px">'
+   +'<div class="hero-lbl"><span class="eyebrow">Spent \u00b7 '+esc(mLabel(S.month))+'</span></div>'
+   +'<div class="hero-num out" style="font-size:42px"><span class="r">\u20b9</span>'+inr(total)+'</div>'
+   +'<div class="mono" style="font-size:12.5px;color:var(--muted);margin-top:8px">'+mo.length
+   +(mo.length===1?' entry':' entries')+(mo.length>0?' \u00b7 \u20b9'+inr(total/daysIn(S.month))+' a day':'')+'</div>';
+
+  h+='<div class="sect"><div class="sect-hd"><span class="eyebrow">In and out \u00b7 last 6 months</span></div>'
+   +'<div class="card" style="padding:10px 14px 14px"><div class="cols">';
+  months.forEach(function(m){h+='<div class="col"><div class="pair">'
+   +'<i style="height:'+((m.inn/peak)*100).toFixed(1)+'%;background:var(--brass)"></i>'
+   +'<i style="height:'+((m.out/peak)*100).toFixed(1)+'%;background:var(--verm)"></i></div>'
+   +'<span class="lb">'+esc(MON[+m.key.slice(5,7)-1])+'</span></div>'});
+  h+='</div><div class="legend"><span><i style="background:var(--brass)"></i>Rent in</span>'
+   +'<span><i style="background:var(--verm)"></i>Spent out</span></div></div></div>';
+
+  h+='<div class="sect"><div class="sect-hd"><span class="eyebrow">Where it went</span></div>';
+  if(!cats.length){h+=emptyBox('Nothing spent this month',"Or you just haven't written it down yet.",'add-expense')}
+  else{h+='<div class="card" style="padding:8px 15px 12px">';
+    cats.forEach(function(c){h+='<div class="catrow"><span class="nm">'+esc(c[0])+'</span>'
+      +'<span class="tk"><i style="width:'+((c[1]/top)*100).toFixed(1)+'%"></i></span>'
+      +'<span class="vl mono">\u20b9'+inr(c[1])+'</span></div>'});
+    h+='</div>'}
+  h+='</div>';
+
+  if(mo.length)h+='<div class="sect"><div class="sect-hd"><span class="eyebrow">Every expense this month</span></div>'
+   +'<div class="ledger">'+mo.slice().reverse().map(function(e){return ledgerRow(e)}).join('')+'</div></div>';
+  h+='</div>';return h}
+
+function viewGiven(){
+  var all=sortedEntries();
+  var h='<div class="wrap" style="padding-top:20px"><div class="hero-lbl"><span class="eyebrow">Money in &amp; out with people</span></div>'
+   +'<div style="font-size:12.5px;color:var(--muted);margin:4px 0 18px">Cash moving between the two of you, plus money that comes in from outside \u2014 like a top-up from your mum.</div>';
+
+  var recList=all.filter(function(e){return e.type==='received'});
+  var recAll=recList.reduce(function(s,e){return s+e.amount},0);
+  var recMonth=recList.filter(function(e){return mKey(e.date)===S.month}).reduce(function(s,e){return s+e.amount},0);
+  h+='<div class="card coll" style="margin-bottom:22px"><div class="coll-top"><b>Received into the pool</b>'
+   +'<span class="n mono">this month \u00b7 \u20b9'+inr(recMonth)+'</span></div>'
+   +'<div class="hero-num in" style="font-size:34px;margin-top:2px"><span class="r">\u20b9</span>'+inr(recAll)+'</div>'
+   +'<div class="coll-note">All-time total \u2014 this adds straight to your balance, the same way rent does.</div></div>';
+
+  S.cfg.people.forEach(function(p){
+    var got=0,spent=0;
+    all.forEach(function(e){if(e.type==='given'&&e.person===p)got+=e.amount;
+      if(e.type==='expense'&&e.person===p)spent+=e.amount});
+    var hand=got-spent;
+    h+='<div class="card ptile"><div class="nm">'+esc(p)+'</div><div class="grid">'
+     +'<div class="g"><div class="k">Received</div><div class="v mono mv">\u20b9'+inr(got)+'</div></div>'
+     +'<div class="g"><div class="k">Logged spent</div><div class="v mono out">\u20b9'+inr(spent)+'</div></div>'
+     +'<div class="g"><div class="k">Still in hand</div><div class="v mono" style="color:'+(hand<0?'var(--muted)':'var(--brass)')+'">'
+     +(hand<0?'\u2212':'')+'\u20b9'+inr(hand)+'</div></div></div></div>'});
+  h+='<div class="hintbox" style="margin-top:6px">'
+   +(S.cfg.givenIsSpend?'<b>Given counts as spend.</b> Handing over cash lowers the balance right away, so don\u2019t log the same money again as an expense.'
+     :'<b>Given doesn\u2019t change the balance.</b> The cash has only changed hands. The balance drops when it\u2019s logged as an expense \u2014 so nothing gets counted twice.')
+   +' <b>Received always adds to the balance</b> \u2014 use it whenever real money comes in from outside the two of you, like a top-up from your mum, and it\u2019ll offset your logged spending automatically.'
+   +'</div>';
+
+  h+='<div class="sect"><div class="sect-hd"><span class="eyebrow">Every top-up received</span></div>'
+   +(recList.length===0?emptyBox('Nothing received yet','Log money that comes in from outside \u2014 like a top-up from your mum.','add-received','Add received money')
+     :'<div class="ledger">'+recList.slice().reverse().map(function(e){return ledgerRow(e)}).join('')+'</div>')
+   +'</div>';
+
+  var list=all.filter(function(e){return e.type==='given'}).reverse();
+  h+='<div class="sect"><div class="sect-hd"><span class="eyebrow">Every handover</span></div>'
+   +(list.length===0?emptyBox('No money handed over yet','Log it when you pass cash to each other.','add-given')
+     :'<div class="ledger">'+list.map(function(e){return ledgerRow(e)}).join('')+'</div>')
+   +'</div></div>';return h}
+
+
+/* ═════════════════════ WEALTH TAB ═════════════════════ */
+var WSUBS=[['worth','Worth'],['cards','Cards'],['banks','Banks'],['metals','Metals'],['owed','Owed']];
+
+function wsubBar(){
+  return '<div class="wsub">'+WSUBS.map(function(x){
+    return '<button class="'+(S.wsub===x[0]?'on':'')+'" data-a="w-sub" data-v="'+x[0]+'">'+x[1]+'</button>'
+  }).join('')+'</div>';
+}
+
+function viewWealth(){
+  W.cards.forEach(rollCard);
+  var h='<div class="wrap" style="padding-top:18px">'+wsubBar();
+  if(S.wsub==='cards')h+=wCards();
+  else if(S.wsub==='banks')h+=wBanks();
+  else if(S.wsub==='metals')h+=wMetals();
+  else if(S.wsub==='owed')h+=wOwed();
+  else h+=wWorth();
+  return h+'</div>';
+}
+
+/* ---------- Net worth ---------- */
+function wWorth(){
+  var n=netWorth(),tg=metalValue('gold'),ts=metalValue('silver'),cash=sumBanks(),rec=sumRecv(),live=liveMomOwed();
+  var bill=sumBilled(),unb=sumUnbilled(),per=sumLiab();
+  var h='<div class="hero-lbl" style="margin-top:16px"><span class="eyebrow">Net worth</span></div>'
+   +'<div class="hero-num'+(n.nw<0?' hero-neg':'')+'" style="font-size:46px">'
+   +(n.nw<0?'\u2212':'')+'<span class="r">\u20b9</span>'+inr(n.nw)+'</div>'
+   +'<div class="mono" style="font-size:12px;color:var(--muted);margin-top:8px">assets \u20b9'+inr(n.assets)
+   +' \u2212 owing \u20b9'+inr(n.liab)+'</div>';
+
+  h+='<div class="sect"><div class="sect-hd"><span class="eyebrow">What you own</span>'
+   +'<span class="eyebrow mono in">\u20b9'+inr(n.assets)+'</span></div><div class="card" style="padding:4px 15px">';
+  h+=wRow('Cash in banks',cash,'in',true);
+  W.banks.filter(function(b){return +b.balance}).forEach(function(b){h+=wRow(b.name,b.balance,'',false)});
+  h+=wRow('Gold',tg,'','gold'===''?false:true);
+  liveLots('gold').forEach(function(l){h+=wRow((l.karat||24)+'K \u00b7 '+gm(l.grams)+'g'+(l.source?' \u00b7 '+l.source:''),lotValue(l),'',false)});
+  if(ts>0){h+=wRow('Silver',ts,'',true);
+    liveLots('silver').forEach(function(l){h+=wRow(gm(l.grams)+'g'+(l.source?' \u00b7 '+l.source:''),lotValue(l),'',false)})}
+  if(live>0){h+=wRow('Owed by Mom \u00b7 Hisaab ledger',live,'in',true)}
+  if(rec>0){h+=wRow('Owed to you \u00b7 manual',rec,'in',true);
+    W.receivables.forEach(function(r){h+=wRow(r.name+(r.note?' \u00b7 '+r.note:''),r.amount,'',false)})}
+  h+='</div></div>';
+
+  h+='<div class="sect"><div class="sect-hd"><span class="eyebrow">What you owe</span>'
+   +'<span class="eyebrow mono out">\u20b9'+inr(n.liab)+'</span></div><div class="card" style="padding:4px 15px">';
+  h+=wRow('Card bills raised',bill,'out',true);
+  W.cards.filter(function(c){return +c.bill>0}).forEach(function(c){h+=wRow(c.name,c.bill,'',false)});
+  h+=wRow('Unbilled card spend',unb,'out',true);
+  W.cards.filter(function(c){return +c.unbilled>0}).forEach(function(c){h+=wRow(c.name,c.unbilled,'',false)});
+  if(per>0){h+=wRow('Loans you owe',per,'out',true);
+    W.liabilities.forEach(function(l){h+=wRow(l.name,l.amount,'',false)})}
+  h+='</div></div>';
+
+  h+='<div class="hintbox" style="margin-top:20px">Update these once or twice a month \u2014 balances, card bills and metal rates. '
+   +'The daily ledger tabs look after themselves.</div>';
+  return h;
+}
+function wRow(label,amt,cls,strong){
+  return '<div class="wline'+(strong?' grp':'')+'"><span>'+esc(label)+'</span>'
+   +'<span class="mono '+(cls||'')+'">\u20b9'+inr(amt)+'</span></div>';
+}
+
+/* ---------- Cards ---------- */
+function wCards(){
+  var list=W.cards.slice().sort(function(a,b){return daysTo(nextDue(a))-daysTo(nextDue(b))});
+  var ranked=W.cards.filter(function(c){return availOf(c)>5000})
+    .sort(function(a,b){return freeDays(b)-freeDays(a)});
+  var best=ranked[0];
+  var h='';
+  if(best){
+    var bi=freeInfo(best);
+    h+='<div class="card best" style="margin-top:16px;padding:20px 18px">'
+     +'<div class="eyebrow">Best card to spend on today</div>'
+     +'<div style="font-family:\'Bodoni Moda\',serif;font-size:22px;font-weight:600;margin-top:6px">'+esc(best.name)+'</div>'
+     +'<div style="font-size:12px;color:var(--muted);margin-top:2px">'+esc(best.bank||'')+'</div>'
+     +'<div style="display:flex;align-items:flex-end;gap:10px;margin-top:14px">'
+     +'<div class="hero-num in" style="font-size:44px;margin:0">'+bi.days+'</div>'
+     +'<div style="font-size:12px;color:var(--muted);padding-bottom:7px">interest-free days<br>if you spend today</div></div>'
+     +'<div style="display:flex;gap:18px;margin-top:14px;padding-top:13px;border-top:1px solid var(--rule);flex-wrap:wrap">'
+     +'<div><div class="k2">Available</div><div class="mono" style="font-size:14px;margin-top:3px">\u20b9'+inr(availOf(best))+'</div></div>'
+     +'<div><div class="k2">Bills on</div><div class="mono" style="font-size:14px;margin-top:3px">'+fmtD(bi.st)+'</div></div>'
+     +'<div><div class="k2">Payable by</div><div class="mono" style="font-size:14px;margin-top:3px">'+fmtD(bi.due)+'</div></div>'
+     +'</div></div>';
+
+    h+='<div class="sect"><div class="sect-hd"><span class="eyebrow">Longest free ride, in order</span>'
+     +'<span class="eyebrow mono">today \u2192 payable</span></div><div class="card" style="padding:2px 15px">';
+    ranked.slice(0,8).forEach(function(c,i){
+      var fi=freeInfo(c);
+      h+='<div class="lrow" data-a="w-card-open" data-v="'+c.id+'">'
+       +'<span class="lrank'+(i===0?' top':'')+'">'+(i+1)+'</span>'
+       +'<div class="cbd"><b>'+esc(c.name)+'</b><s>'+esc(c.bank||'')+' \u00b7 bills '+fmtD(fi.st)+' \u00b7 pay by '+fmtD(fi.due)+'</s></div>'
+       +'<div class="crt"><div class="mono in" style="font-size:15px;font-weight:600">'+fi.days+'d</div>'
+       +'<div class="mono" style="font-size:10.5px;color:var(--muted);margin-top:2px">\u20b9'+inr(availOf(c))+'</div></div></div>';
+    });
+    h+='</div><div class="hintbox" style="margin-top:10px">A card whose statement was just cut gives you a fresh cycle, '
+     +'but the grace window after the statement matters just as much \u2014 so the winner is whichever pushes the '
+     +'<b>payment date</b> furthest out.</div></div>';
+  }
+  h+='<div class="sect"><div class="sect-hd"><span class="eyebrow">All cards \u00b7 soonest due first</span>'
+   +'<span class="eyebrow mono">\u20b9'+inr(sumAvail())+' free</span></div>';
+  if(!list.length)h+=emptyBox('No cards yet','Add a card to track its bill and due date.','w-card-new','Add a card');
+  else{
+    h+='<div class="card" style="padding:2px 15px">';
+    list.forEach(function(c){
+      var d=daysTo(nextDue(c)),av=availOf(c),pct=c.limit?Math.min(100,Math.round((c.limit-av)/c.limit*100)):0;
+      var col=d<=3?'var(--verm)':d<=10?'var(--brass)':'var(--teal)';
+      h+='<div class="crow" data-a="w-card-open" data-v="'+c.id+'">'
+       +'<div class="cbd"><b>'+esc(c.name)+'</b><s>'+esc(c.bank||'')+' \u00b7 \u20b9'+inr(av)+' available</s>'
+       +'<div class="ubar"><i style="width:'+pct+'%;background:'+(pct>=80?'var(--verm)':pct>=50?'var(--brass)':'var(--teal)')+'"></i></div></div>'
+       +'<div class="crt"><div class="mono" style="font-size:14px;font-weight:600;color:'+col+'">'
+       +(d<0?'overdue':d===0?'today':d+'d')+'</div>'
+       +'<div class="mono" style="font-size:10.5px;color:var(--muted);margin-top:3px">'+fmtD(nextDue(c))+'</div>'
+       +(+c.bill>0?'<div class="mono out" style="font-size:11.5px;margin-top:3px">\u20b9'+inr(c.bill)+'</div>':'')
+       +'</div>'
+       +(+c.bill>0?'<button class="paidbtn" style="margin-left:10px" data-a="w-bill-paid" data-v="'+c.id+'">Paid</button>':'')
+       +'</div>';
+    });
+    h+='</div><button class="chip add" style="width:100%;padding:14px;margin-top:10px" data-a="w-card-new">+ Add a card</button>';
+  }
+  h+='</div>';
+  return h;
+}
+function fmtD(d){return pad2(d.getDate())+' '+MON[d.getMonth()]}
+
+/* ---------- Banks ---------- */
+function wBanks(){
+  var h='<div class="hero-lbl" style="margin-top:16px"><span class="eyebrow">Cash in banks</span></div>'
+   +'<div class="hero-num in" style="font-size:44px"><span class="r">\u20b9</span>'+inr(sumBanks())+'</div>'
+   +'<div class="sect">';
+  if(!W.banks.length)h+=emptyBox('No accounts yet','Add your bank accounts to track cash.','w-bank-new','Add an account');
+  else{
+    h+='<div class="card" style="padding:2px 15px">';
+    W.banks.forEach(function(b){
+      h+='<div class="setrow" data-a="w-bank-open" data-v="'+b.id+'"><div class="bd"><b>'+esc(b.name)+'</b></div>'
+       +'<div class="mono" style="font-size:15px;font-weight:500">\u20b9'+inr(b.balance)+'</div>'
+       +'<button class="x" data-a="w-bank-open" data-v="'+b.id+'" aria-label="Edit">'+I.pencil+'</button></div>';
+    });
+    h+='</div><button class="chip add" style="width:100%;padding:14px;margin-top:10px" data-a="w-bank-new">+ Add an account</button>';
+  }
+  return h+'</div>';
+}
+
+/* ---------- Metals ---------- */
+function wMetals(){
+  var h='<div style="display:flex;gap:10px;margin-top:16px">'
+   +'<div class="split"><div class="k">Gold rate \u00b7 24K/g</div>'
+   +'<input class="inp mono" id="w-goldrate" inputmode="numeric" value="'+W.goldRate+'" data-f2="goldRate" style="margin-top:6px;padding:9px 11px;font-size:15px"></div>'
+   +'<div class="split"><div class="k">Silver rate \u00b7 /g</div>'
+   +'<input class="inp mono" id="w-silverrate" inputmode="numeric" value="'+W.silverRate+'" data-f2="silverRate" style="margin-top:6px;padding:9px 11px;font-size:15px"></div></div>';
+
+  ['gold','silver'].forEach(function(m){
+    var lots=liveLots(m),val=metalValue(m);
+    var cost=lots.reduce(function(s,l){return s+lotCost(l)},0);
+    var grams=lots.reduce(function(s,l){return s+l.grams},0);
+    var pnl=val-cost,real=realisedPnl(m);
+    if(!lots.length&&!real)return;
+    h+='<div class="sect"><div class="sect-hd"><span class="eyebrow">'+(m==='gold'?'Gold':'Silver')+'</span>'
+     +'<span class="eyebrow mono">'+gm(grams)+'g held</span></div>'
+     +'<div class="card" style="padding:15px 16px">'
+     +'<div style="display:flex;flex-wrap:wrap;gap:16px 22px">'
+     +wStat('Value',' \u20b9'+inr(val),m==='gold'?'in':'')
+     +wStat('Cost','\u20b9'+inr(cost),'')
+     +wStat('Unrealised',(pnl>=0?'+':'\u2212')+'\u20b9'+inr(pnl),pnl>=0?'in':'out')
+     +(real?wStat('Booked',(real>=0?'+':'\u2212')+'\u20b9'+inr(real),real>=0?'in':'out'):'')
+     +'</div></div>';
+    if(lots.length){
+      h+='<div class="card" style="padding:2px 15px;margin-top:10px">';
+      lots.forEach(function(l){
+        var v=lotValue(l),c=lotCost(l),p=v-c;
+        h+='<div class="setrow" data-a="w-lot-open" data-v="'+l.id+'"><div class="bd">'
+         +'<b>'+gm(l.grams)+'g \u00b7 '+(m==='silver'?(l.karat||999):(l.karat||24)+'K')+'</b>'
+         +'<s>'+esc(l.source||l.brand||'')+' \u00b7 '+esc(fmtDMY(l.date))
+         +((l.status||'delivered')==='transit'?' \u00b7 in transit':'')+'</s></div>'
+         +'<div class="crt"><div class="mono" style="font-size:13.5px">\u20b9'+inr(v)+'</div>'
+         +'<div class="mono '+(p>=0?'in':'out')+'" style="font-size:11px;margin-top:2px">'+(p>=0?'+':'\u2212')+'\u20b9'+inr(p)+'</div></div>'
+         +'<button class="sellbtn" data-a="w-sell-lot" data-v="'+l.id+'">Sell</button></div>';
+      });
+      h+='</div>';
+    }
+    h+='<div style="display:flex;gap:8px;margin-top:10px">'
+     +'<button class="chip add" style="flex:1;padding:13px" data-a="w-lot-new" data-v="'+m+'">+ Add '+m+'</button>'
+     +(lots.length?'<button class="chip add" style="flex:1;padding:13px" data-a="w-sale-new" data-v="'+m+'">Record a sale</button>':'')
+     +'</div></div>';
+  });
+
+  if(!W.metals.length)h+='<div class="sect">'+emptyBox('Nothing tracked yet','Add a gold or silver purchase to start.','w-lot-new','Add gold')+'</div>';
+
+  if(W.sales.length){
+    h+='<div class="sect"><div class="sect-hd"><span class="eyebrow">Sales booked</span></div><div class="card" style="padding:2px 15px">';
+    W.sales.slice().reverse().slice(0,12).forEach(function(x){
+      h+='<div class="setrow" data-a="w-sale-open" data-v="'+x.id+'"><div class="bd">'
+       +'<b>'+gm(x.grams)+'g '+esc(metalOf(x))+'</b><s>'+esc(fmtDMY(x.date))+' \u00b7 \u20b9'+inr(x.proceeds)+' in</s></div>'
+       +'<div class="mono '+((+x.pnl>=0)?'in':'out')+'" style="font-size:13.5px">'+((+x.pnl>=0)?'+':'\u2212')+'\u20b9'+inr(x.pnl)+'</div></div>';
+    });
+    h+='</div></div>';
+  }
+  return h;
+}
+function wStat(l,v,cls){return '<div><div class="k2">'+esc(l)+'</div>'
+  +'<div class="mono '+(cls||'')+'" style="font-size:15px;margin-top:4px">'+v+'</div></div>'}
+function fmtDMY(iso){if(!iso)return '\u2014';var p=String(iso).split('-');
+  return p.length===3?(pad2(+p[2])+' '+MON[+p[1]-1]+" '"+p[0].slice(2)):iso}
+
+/* ---------- Owed ---------- */
+function wOwed(){
+  var r=sumRecv(),l=sumLiab(),live=liveMomOwed();
+  var h='<div style="display:flex;gap:10px;margin-top:16px">'
+   +'<div class="split"><div class="k">Owed to you</div><div class="v mono in">\u20b9'+inr(r+live)+'</div></div>'
+   +'<div class="split"><div class="k">You owe</div><div class="v mono out">\u20b9'+inr(l)+'</div></div></div>'
+   +'<div class="mono" style="font-size:12.5px;color:var(--muted);margin-top:12px">net '
+   +((r+live-l)>=0?'+':'\u2212')+'\u20b9'+inr(Math.abs(r+live-l))+'</div>';
+
+  h+='<div class="sect"><div class="sect-hd"><span class="eyebrow">From your Hisaab ledger</span></div>'
+   +'<div class="card" style="padding:16px 17px;border-color:var(--teal)">'
+   +'<div style="display:flex;justify-content:space-between;align-items:baseline">'
+   +'<span style="font-size:13.5px;font-weight:600">Owed by Mom</span>'
+   +'<span class="mono in" style="font-size:19px;font-weight:600">\u20b9'+inr(live)+'</span></div>'
+   +'<div style="font-size:11.5px;color:var(--muted);margin-top:6px">'
+   +(live>0?'This is the Balance tab running negative \u2014 you\u2019ve covered this much more in rent and expenses than has come in. It updates on its own, nothing to enter here.'
+     :'Balance tab is at zero or positive right now, so there\u2019s nothing outstanding from the ledger.')
+   +'</div></div></div>';
+
+  h+='<div class="sect"><div class="sect-hd"><span class="eyebrow">Entered by hand</span></div>';
+  if(!W.receivables.length)h+=emptyBox('Nobody owes you','Log money you\u2019re waiting to get back.','w-recv-new','Add an entry');
+  else{
+    h+='<div class="card" style="padding:2px 15px">';
+    W.receivables.forEach(function(x){
+      h+='<div class="setrow" data-a="w-recv-open" data-v="'+x.id+'"><div class="bd"><b>'+esc(x.name)+'</b>'
+       +(x.note||x.date?'<s>'+esc(x.note||'')+(x.date?' \u00b7 by '+fmtDMY(x.date):'')+'</s>':'')+'</div>'
+       +'<div class="mono in" style="font-size:15px">\u20b9'+inr(x.amount)+'</div>'
+       +'<button class="x" data-a="w-recv-open" data-v="'+x.id+'" aria-label="Edit">'+I.pencil+'</button></div>';
+    });
+    h+='</div><button class="chip add" style="width:100%;padding:13px;margin-top:10px" data-a="w-recv-new">+ Add</button>';
+  }
+  h+='</div>';
+
+  h+='<div class="sect"><div class="sect-hd"><span class="eyebrow">You owe</span></div>';
+  if(!W.liabilities.length)h+='<div class="hintbox">No personal loans logged.</div>'
+    +'<button class="chip add" style="width:100%;padding:13px;margin-top:10px" data-a="w-liab-new">+ Add</button>';
+  else{
+    h+='<div class="card" style="padding:2px 15px">';
+    W.liabilities.forEach(function(x){
+      h+='<div class="setrow" data-a="w-liab-open" data-v="'+x.id+'"><div class="bd"><b>'+esc(x.name)+'</b>'
+       +(x.note?'<s>'+esc(x.note)+'</s>':'')+'</div>'
+       +'<div class="mono out" style="font-size:15px">\u20b9'+inr(x.amount)+'</div>'
+       +'<button class="x" data-a="w-liab-open" data-v="'+x.id+'" aria-label="Edit">'+I.pencil+'</button></div>';
+    });
+    h+='</div><button class="chip add" style="width:100%;padding:13px;margin-top:10px" data-a="w-liab-new">+ Add</button>';
+  }
+  return h+'</div>';
+}
+
+
+/* ═════════════════════ WEALTH EDITORS ═════════════════════ */
+function wFind(list,id){var f=null;list.forEach(function(x){if(String(x.id)===String(id))f=x});return f}
+
+function wSheetView(){
+  var k=S.wSheet.kind,id=S.wSheet.id,isNew=!id;
+  var t={card:'card',bank:'account',lot:'holding',sale:'sale',recv:'entry',liab:'entry'}[k];
+  var h='<div class="scrim" data-a="w-close"></div><div class="sheet anim" role="dialog">'
+   +'<div class="sheet-hd"><h3>'+(isNew?'New ':'Edit ')+esc(t)+'</h3>'
+   +'<button data-a="w-close" style="padding:6px;color:var(--muted)" aria-label="Close">'+I.x+'</button></div>'
+   +'<div class="sheet-bd">';
+
+  if(k==='card'){
+    var c=isNew?{name:'',bank:'',limit:'',bill:'',unbilled:'',stDay:'',dueDay:'',currentDue:'',currentSt:''}:wFind(W.cards,id);
+    h+=wF('Card name','wf-name',c.name,'text','e.g. Gold X UPI')
+     +wF('Bank','wf-bank',c.bank,'text','e.g. HDFC')
+     +wF('Credit limit (\u20b9)','wf-limit',c.limit,'num','500000')
+     +'<div style="display:flex;gap:10px">'
+     +'<div style="flex:1">'+wF('Bill raised (\u20b9)','wf-bill',c.bill,'num','0')+'</div>'
+     +'<div style="flex:1">'+wF('Unbilled (\u20b9)','wf-unbilled',c.unbilled,'num','0')+'</div></div>'
+     +wF('Available now (\u20b9)','wf-avail',(id?availOf(c):''),'num','what the bank shows')
+     +'<div id="wf-calcwarn" class="hintbox" style="display:none;margin-bottom:12px;border-color:var(--brass)"></div>'
+     +'<div style="display:flex;gap:10px">'
+     +'<div style="flex:1">'+wF('Statement day','wf-stDay',c.stDay,'num','14')+'</div>'
+     +'<div style="flex:1">'+wF('Due day','wf-dueDay',c.dueDay,'num','30')+'</div></div>'
+     +'<div style="display:flex;gap:10px">'
+     +'<div style="flex:1">'+wF('This statement','wf-currentSt',c.currentSt,'date','')+'</div>'
+     +'<div style="flex:1">'+wF('This due date','wf-currentDue',c.currentDue,'date','')+'</div></div>'
+     +'<div class="hintbox" style="margin-bottom:12px">Type into either side and the other keeps up: change bill or unbilled and available follows; type available and unbilled follows.</div>';
+  }
+  else if(k==='bank'){
+    var b=isNew?{name:'',balance:''}:wFind(W.banks,id);
+    h+=wF('Account name','wf-name',b.name,'text','e.g. HDFC Savings')
+     +wF('Balance (\u20b9)','wf-balance',b.balance,'num','0');
+  }
+  else if(k==='lot'){
+    var l=isNew?{metal:S.wSheet.metal||'gold',date:todayISO(),brand:'',source:'',karat:'',grams:'',purchaseRate:'',payCard:'',status:'delivered',note:''}:wFind(W.metals,id);
+    var isS=metalOf(l)==='silver';
+    h+=(isNew?'<div class="fld"><label>Metal</label><div class="chips" data-grp="wmetal">'
+     +['gold','silver'].map(function(m){return '<button class="chip'+(metalOf(l)===m?' on':'')+'" data-a="w-metal" data-v="'+m+'">'+(m==='gold'?'Gold':'Silver')+'</button>'}).join('')
+     +'</div></div>'
+     :'<div style="font-size:11.5px;color:var(--muted);margin-bottom:14px">'+(metalOf(l)==='silver'?'Silver':'Gold')+' holding</div>')
+     +'<div style="display:flex;gap:10px">'
+     +'<div style="flex:1.2">'+wF('Grams','wf-grams',l.grams,'num','10')+'</div>'
+     +'<div style="flex:1">'+wF(isS?'Purity':'Karat','wf-karat',l.karat,'num',isS?'999':'24')+'</div></div>'
+     +wF('Buy rate per gram (\u20b9)','wf-purchaseRate',l.purchaseRate,'num','14000')
+     +wF('Bought on','wf-date',l.date,'date','')
+     +'<div style="display:flex;gap:10px">'
+     +'<div style="flex:1">'+wF('Seller','wf-source',l.source,'text','e.g. Ajio')+'</div>'
+     +'<div style="flex:1">'+wF('Brand','wf-brand',l.brand,'text','e.g. Kalyan')+'</div></div>'
+     +wF('Paid with','wf-payCard',l.payCard,'text','e.g. UPI')
+     +'<div class="fld"><label>Status</label><div class="chips" data-grp="wstatus">'
+     +[['delivered','In hand'],['transit','In transit']].map(function(x){
+       return '<button class="chip'+((l.status||'delivered')===x[0]?' on':'')+'" data-a="w-status" data-v="'+x[0]+'">'+x[1]+'</button>'}).join('')
+     +'</div></div>'
+     +wF('Note','wf-note',l.note,'text','optional');
+  }
+  else if(k==='sale'){
+    var sale=id?wFind(W.sales,id):null;
+    var metal=S.wSheet.metal||(sale?metalOf(sale):'gold');
+    var lots=liveLots(metal).slice();
+    if(sale){var sl=wFind(W.metals,sale.lotId);
+      if(sl){var seen=false;lots.forEach(function(x){if(x.id===sl.id)seen=true});if(!seen)lots.unshift(sl);}}
+    var sel=S.wSheet.lotId||(sale?sale.lotId:(lots[0]?lots[0].id:''));
+    var lot=wFind(W.metals,sel);
+    var avail=lot?gm(lot.grams+(sale&&String(sale.lotId)===String(sel)?(+sale.grams||0):0)):0;
+    h+='<div class="fld"><label>Which holding</label>'
+     +(lots.length?'<select class="inp" data-f2="saleLot">'+lots.map(function(x){
+        var extra=(sale&&String(sale.lotId)===String(x.id))?(+sale.grams||0):0;
+        return '<option value="'+x.id+'"'+(String(sel)===String(x.id)?' selected':'')+'>'
+         +esc(gm(x.grams+extra)+'g \u00b7 '+(metal==='silver'?(x.karat||999):(x.karat||24)+'K')+(x.source?' \u00b7 '+x.source:''))+'</option>'}).join('')+'</select>'
+       :'<div class="hintbox">Nothing to sell yet.</div>')
+     +(lot?'<div style="font-size:11.5px;color:var(--muted);margin-top:7px">'+avail+'g available \u00b7 bought at \u20b9'+inr(lot.purchaseRate)+'/g</div>':'')
+     +'</div>'
+     +wF('Grams sold','wf-grams',(sale?gm(sale.grams):''),'num',String(avail))
+     +wF('Sell rate per gram (\u20b9)','wf-sellRate',(sale?Math.round(sale.sellRate):''),'num','15500')
+     +wF('Sold on','wf-date',(sale?sale.date:todayISO()),'date','')
+     +wF('Buyer','wf-buyer',(sale?(sale.buyer||''):''),'text','optional')
+     +'<div class="hintbox" style="margin-bottom:12px">Profit is worked out against what you paid for that holding, and the grams come off it.</div>';
+  }
+  else{
+    var r=isNew?{name:'',amount:'',date:'',note:''}:wFind(k==='recv'?W.receivables:W.liabilities,id);
+    h+=wF(k==='recv'?'Who owes you':'Who you owe','wf-name',r.name,'text','name')
+     +wF('Amount (\u20b9)','wf-amount',r.amount,'num','0')
+     +wF('Expected by','wf-date',r.date,'date','')
+     +wF('Note','wf-note',r.note,'text','what it\u2019s for');
+  }
+
+  if(!isNew&&k==='lot')h+='<button class="chip" style="width:100%;padding:14px;margin-bottom:9px" '
+   +'data-a="w-lot-clone" data-v="'+id+'">Duplicate this holding</button>';
+  if(!isNew)h+='<button class="chip" style="width:100%;padding:14px;color:var(--verm);border:1px solid var(--rule)" '
+   +'data-a="w-del" data-v="'+k+'|'+id+'">Delete this '+esc(t)+'</button>';
+  h+='</div><div class="sheet-ft"><button class="save" data-a="w-save">'+(isNew?'Add':'Save changes')+'</button></div></div>';
+  return h;
+}
+function cardRecalc(src){
+  function n(id){var e=document.getElementById(id);return e?numOf(e.value):0}
+  function set(id,v){var e=document.getElementById(id);if(e)e.value=v}
+  var limit=n('wf-limit'),bill=n('wf-bill'),unb=n('wf-unbilled'),av=n('wf-avail');
+  var warn=document.getElementById('wf-calcwarn'),msg='';
+  if(src==='avail'){
+    var newUnb=limit-bill-av;
+    set('wf-unbilled',Math.max(0,Math.round(newUnb)));
+    if(newUnb<0)msg='Available plus bill is more than the limit. Unbilled shown as \u20b90 \u2014 it\u2019ll still save.';
+  }else{
+    var newAv=limit-bill-unb;
+    set('wf-avail',Math.max(0,Math.round(newAv)));
+    if(newAv<0)msg='Bill plus unbilled is more than the limit. Available shown as \u20b90 \u2014 it\u2019ll still save.';
+  }
+  if(warn){warn.textContent=msg;warn.style.display=msg?'':'none'}
+}
+
+function wF(label,id,v,type,ph){
+  var t=type==='date'?'date':'text';
+  var im=type==='num'?' inputmode="numeric"':'';
+  var cls=(type==='num'||type==='date')?'inp mono':'inp';
+  var hook='';
+  if(id==='wf-limit'||id==='wf-bill'||id==='wf-unbilled')hook=' data-recalc="parts"';
+  if(id==='wf-avail')hook=' data-recalc="avail"';
+  return '<div class="fld"><label>'+esc(label)+'</label>'
+   +'<input class="'+cls+'" id="'+id+'" type="'+t+'"'+im+hook+' placeholder="'+esc(ph||'')+'" value="'+esc(v==null?'':v)+'"></div>';
+}
+
+function wSave(){
+  var k=S.wSheet.kind,id=S.wSheet.id,isNew=!id;
+  if(k==='card'){
+    var nm=val('wf-name'); if(!nm){ping('Give the card a name');return}
+    var o=isNew?{id:wid(W.cards)}:wFind(W.cards,id);
+    o.name=nm;o.bank=val('wf-bank');o.limit=numOf(val('wf-limit'));
+    o.bill=numOf(val('wf-bill'));o.unbilled=numOf(val('wf-unbilled'));
+    o.stDay=numOf(val('wf-stDay'))||1;o.dueDay=numOf(val('wf-dueDay'))||1;
+    o.currentSt=val('wf-currentSt')||null;o.currentDue=val('wf-currentDue')||null;
+    var av=val('wf-avail');
+    o.available=av===''?Math.max(0,o.limit-o.bill-o.unbilled):numOf(av);
+    if(isNew)W.cards.push(o);
+  }
+  else if(k==='bank'){
+    var bn=val('wf-name'); if(!bn){ping('Give the account a name');return}
+    var b=isNew?{id:wid(W.banks)}:wFind(W.banks,id);
+    b.name=bn;b.balance=numOf(val('wf-balance'));
+    if(isNew)W.banks.push(b);
+  }
+  else if(k==='lot'){
+    var g=parseFloat(val('wf-grams'))||0; if(!g){ping('How many grams?');return}
+    var l=isNew?{id:wid(W.metals)}:wFind(W.metals,id);
+    l.metal=S.wSheet.metal||l.metal||'gold';
+    l.grams=gm(g);l.karat=numOf(val('wf-karat'))||(l.metal==='silver'?999:24);
+    l.purchaseRate=parseFloat(val('wf-purchaseRate'))||0;
+    l.date=val('wf-date')||todayISO();l.source=val('wf-source');l.brand=val('wf-brand');
+    l.payCard=val('wf-payCard');l.status=S.wSheet.status||l.status||'delivered';l.note=val('wf-note');
+    if(isNew)W.metals.push(l);
+  }
+  else if(k==='sale'){
+    var lot=wFind(W.metals,S.wSheet.lotId);
+    if(!lot){ping('Pick a holding first');return}
+    var sg=parseFloat(val('wf-grams'))||0;
+    if(!sg){ping('How many grams sold?');return}
+    var rate=parseFloat(val('wf-sellRate'))||0;
+    if(!rate){ping('What was the sell rate?');return}
+    var prev=id?wFind(W.sales,id):null;
+    // how many grams are really available once this sale's own grams are handed back
+    var pool=lot.grams+((prev&&String(prev.lotId)===String(lot.id))?(+prev.grams||0):0);
+    if(sg>pool+0.0001){ping('That\u2019s more than the holding has');return}
+    if(prev){
+      var oldLot=wFind(W.metals,prev.lotId);
+      if(oldLot)oldLot.grams=gm(oldLot.grams+(+prev.grams||0));
+      W.sales=W.sales.filter(function(x){return String(x.id)!==String(id)});
+    }
+    var proceeds=sg*rate, basis=sg*(+lot.purchaseRate||0);
+    var snap={};for(var kk in lot)snap[kk]=lot[kk];
+    W.sales.push({id:prev?prev.id:wid(W.sales),metal:metalOf(lot),karat:lot.karat,brand:lot.brand,source:lot.source,
+      buyer:val('wf-buyer'),date:val('wf-date')||todayISO(),grams:gm(sg),buyRate:lot.purchaseRate,
+      sellRate:rate,proceeds:Math.round(proceeds),costBasis:Math.round(basis),
+      pnl:Math.round(proceeds-basis),lotId:lot.id,lotSnap:snap});
+    lot.grams=gm(lot.grams-sg);
+  }
+  else{
+    var list=k==='recv'?W.receivables:W.liabilities;
+    var pn=val('wf-name'); if(!pn){ping('Add a name');return}
+    var e=isNew?{id:wid(list)}:wFind(list,id);
+    e.name=pn;e.amount=numOf(val('wf-amount'));e.date=val('wf-date')||null;e.note=val('wf-note');
+    if(isNew)list.push(e);
+  }
+  saveW();S.wSheet=null;renderOverlay(false);renderApp();
+  ping(isNew?'Added':'Saved');
+}
+
+function markBillPaid(id){
+  var c=wFind(W.cards,id); if(!c||!(+c.bill))return;
+  c.available=Math.min(+c.limit||0,availOf(c)+(+c.bill||0));
+  c.bill=0;
+  saveW();renderApp();ping('Bill cleared \u00b7 limit freed up');
+}
+
+function wDelete(kind,id){
+  if(kind==='card')W.cards=W.cards.filter(function(x){return String(x.id)!==String(id)});
+  else if(kind==='bank')W.banks=W.banks.filter(function(x){return String(x.id)!==String(id)});
+  else if(kind==='lot')W.metals=W.metals.filter(function(x){return String(x.id)!==String(id)});
+  else if(kind==='sale'){
+    var sale=wFind(W.sales,id);
+    if(sale){var lot=wFind(W.metals,sale.lotId);
+      if(lot)lot.grams=gm(lot.grams+(+sale.grams||0));}
+    W.sales=W.sales.filter(function(x){return String(x.id)!==String(id)});
+  }
+  else if(kind==='recv')W.receivables=W.receivables.filter(function(x){return String(x.id)!==String(id)});
+  else if(kind==='liab')W.liabilities=W.liabilities.filter(function(x){return String(x.id)!==String(id)});
+  saveW();S.wSheet=null;renderOverlay(false);renderApp();ping('Deleted');
+}
+
+function wealthAction(a,v){
+  if(a==='w-sub'){S.wsub=v;window.scrollTo(0,0);renderApp();return}
+  if(a==='w-close'){S.wSheet=null;renderOverlay(false);return}
+  if(a==='w-save'){wSave();return}
+  if(a==='w-metal'){S.wSheet.metal=v;renderOverlay(false);return}
+  if(a==='w-status'){S.wSheet.status=v;
+    var box=document.querySelector('[data-grp="wstatus"]');
+    if(box)Array.prototype.forEach.call(box.querySelectorAll('.chip'),function(c){
+      if(c.getAttribute('data-v')===v)c.classList.add('on');else c.classList.remove('on')});
+    return}
+  if(a==='w-del'){var q=v.split('|');
+    S.confirm={title:'Delete this?',msg:'This can\u2019t be undone from the bin \u2014 the recovery bin only covers ledger entries.',
+      act:'w-del',val:v,label:'Delete'};renderOverlay(false);return}
+  if(a==='w-bill-paid'){var pc=wFind(W.cards,v);
+    if(pc)S.confirm={title:'Mark this bill paid?',
+      msg:pc.name+' \u00b7 \u20b9'+inr(pc.bill)+'. This clears the bill and frees that much of your limit back to available.',
+      act:'w-bill-paid',val:v,label:'Mark paid'};
+    renderOverlay(false);return}
+  if(a==='w-card-new'){S.wSheet={kind:'card',id:null};renderOverlay(true);return}
+  if(a==='w-card-open'){S.wSheet={kind:'card',id:v};renderOverlay(true);return}
+  if(a==='w-bank-new'){S.wSheet={kind:'bank',id:null};renderOverlay(true);return}
+  if(a==='w-bank-open'){S.wSheet={kind:'bank',id:v};renderOverlay(true);return}
+  if(a==='w-lot-new'){S.wSheet={kind:'lot',id:null,metal:v||'gold',status:'delivered'};renderOverlay(true);return}
+  if(a==='w-lot-open'){var l=wFind(W.metals,v);S.wSheet={kind:'lot',id:v,metal:l?metalOf(l):'gold',status:l?(l.status||'delivered'):'delivered'};renderOverlay(true);return}
+  if(a==='w-sale-new'){var lots=liveLots(v||'gold');
+    S.wSheet={kind:'sale',id:null,metal:v||'gold',lotId:lots[0]?lots[0].id:null};renderOverlay(true);return}
+  if(a==='w-sale-open'){var sv=wFind(W.sales,v);
+    S.wSheet={kind:'sale',id:v,metal:sv?metalOf(sv):'gold',lotId:sv?sv.lotId:null};
+    renderOverlay(true);return}
+  if(a==='w-sell-lot'){var sl=wFind(W.metals,v);
+    S.wSheet={kind:'sale',id:null,metal:sl?metalOf(sl):'gold',lotId:v};
+    renderOverlay(true);return}
+  if(a==='w-lot-clone'){var cl=wFind(W.metals,v);
+    if(cl){var cp={};for(var ck in cl)cp[ck]=cl[ck];
+      cp.id=wid(W.metals);cp.date=todayISO();
+      W.metals.splice(W.metals.indexOf(cl)+1,0,cp);saveW();
+      S.wSheet={kind:'lot',id:cp.id,metal:metalOf(cp),status:cp.status||'delivered'};
+      renderOverlay(true);renderApp();ping('Copied \u2014 tweak and save');}
+    return}
+  if(a==='w-recv-new'){S.wSheet={kind:'recv',id:null};renderOverlay(true);return}
+  if(a==='w-recv-open'){S.wSheet={kind:'recv',id:v};renderOverlay(true);return}
+  if(a==='w-liab-new'){S.wSheet={kind:'liab',id:null};renderOverlay(true);return}
+  if(a==='w-liab-open'){S.wSheet={kind:'liab',id:v};renderOverlay(true);return}
+}
+
+function tabbar(){
+  var it=[['balance',I.wallet,'Balance'],['rents',I.build,'Rents'],['spend',I.receipt,'Spend'],['given',I.swap,'Given'],['wealth',I.gem,'Wealth']];
+  return '<nav class="tabs">'+it.map(function(t){
+    return '<button class="tab'+(S.tab===t[0]?' on':'')+'" data-a="tab" data-v="'+t[0]+'">'
+      +'<span class="ic">'+t[1]+'</span><span class="tl">'+t[2]+'</span></button>'}).join('')+'</nav>'}
+
+function fab(){if(S.tab==='wealth')return '';
+  var t=S.tab==='rents'?'rent':(S.tab==='given'?'given':'expense');
+  return '<button class="fab" data-a="add-'+t+'" aria-label="Add entry">'+I.plus+'</button>'}
+
+/* --------------------------- add sheet ----------------------------- */
+function sheetView(){
+  var sh=S.sheet,units=allUnits();
+  var u=sh.type==='rent'?findUnit(sh.unitId):null;
+  var title=sh.edit?'Edit entry':(sh.seedFrom?'Repeat entry':'New entry');
+
+  var h='<div class="scrim" data-a="sheet-close"></div><div class="sheet'+(sh.anim?' anim':'')+'" role="dialog">'
+   +'<div class="sheet-hd"><h3>'+title+'</h3>'
+   +'<button data-a="sheet-close" style="padding:6px;color:var(--muted)" aria-label="Close">'+I.x+'</button></div>';
+
+  h+='<div class="sheet-top">';
+  if(!sh.edit){
+    h+='<div class="seg">'+['expense','rent','given','received'].map(function(t){
+      var l=t==='expense'?'Expense':(t==='rent'?'Rent in':(t==='given'?'Given':'Received'));
+      return '<button class="'+(sh.type===t?'on t-'+t:'')+'" data-a="sheet-type" data-v="'+t+'">'+l+'</button>'}).join('')+'</div>';
+  }
+  h+='<div class="amt"><div class="n'+(sh.amt?'':' z')+'" id="amtN"><span class="r">\u20b9</span>'
+   +(sh.amt?inr(Number(sh.amt)):'0')+'</div></div>';
+  if(sh.type==='rent'&&u&&Number(u.rent)>0){
+    h+='<div class="quick"><button data-a="fullrent" data-v="'+u.rent+'">Full rent \u00b7 \u20b9'+inr(u.rent)+'</button></div>';
+  }
+  h+='</div>';
+
+  h+='<div class="sheet-bd">';
+  if(sh.type==='rent'){
+    h+='<div class="fld"><label>Which unit</label>';
+    h+=units.length===0?'<div class="hintbox">Add a property in Setup first.</div>'
+      :'<select class="inp" data-f="unitId">'+units.map(function(x){
+        return '<option value="'+x.id+'"'+(sh.unitId===x.id?' selected':'')+'>'
+          +esc(x.propName+' \u00b7 '+x.label+(x.tenant?' \u2014 '+x.tenant:''))+'</option>'}).join('')+'</select>';
+    h+='</div>';
+  }else{
+    var plabel=sh.type==='given'?'Given to':(sh.type==='received'?'Received from':'Spent by');
+    h+='<div class="fld"><label>'+plabel+'</label><div class="chips" data-grp="person">'
+     +S.cfg.people.map(function(p){return '<button class="chip'+(sh.person===p?' on':'')+'" data-a="person" data-v="'+esc(p)+'">'+esc(p)+'</button>'}).join('')
+     +'</div></div>';
+  }
+  if(sh.type==='expense'){
+    h+='<div class="fld"><label>Category \u00b7 optional</label><div class="chips" data-grp="cat">'
+     +S.cfg.categories.map(function(c){return '<button class="chip'+(sh.cat===c?' on':'')+'" data-a="cat" data-v="'+esc(c)+'">'+esc(c)+'</button>'}).join('')
+     +'<button class="chip add" data-a="newcat-toggle">+ New</button></div>';
+    if(sh.newCat)h+='<div style="display:flex;gap:7px;margin-top:9px"><input class="inp" id="newcat" placeholder="Category name">'
+     +'<button class="chip on" style="padding:0 16px" data-a="newcat-add">Add</button></div>';
+    h+='</div>';
+  }
+  h+='<div class="fld"><label>Paid by</label><div class="chips" data-grp="mode">'
+   +MODES.map(function(m){return '<button class="chip'+(sh.mode===m?' on':'')+'" data-a="mode" data-v="'+m+'">'+m+'</button>'}).join('')
+   +'</div></div>';
+  h+='<div style="display:flex;gap:10px"><div class="fld" style="flex:1"><label>Date</label>'
+   +'<input class="inp mono" type="date" data-f="date" value="'+esc(sh.date)+'"></div>'
+   +'<div class="fld" style="flex:1.3"><label>Note \u00b7 optional</label>'
+   +'<input class="inp" data-f="note" placeholder="Anything to remember" value="'+esc(sh.note)+'"></div></div>';
+  h+='</div>';
+
+  h+='<div class="sheet-ft"><div class="pad">';
+  ['1','2','3','4','5','6','7','8','9','00','0'].forEach(function(k){
+    h+='<button data-a="pad" data-v="'+k+'">'+k+'</button>'});
+  h+='<button class="act" data-a="pad" data-v="del" aria-label="Delete digit">'+I.back+'</button></div>';
+  var ok=Number(sh.amt)>0&&(sh.type!=='rent'||!!sh.unitId);
+  h+='<button class="save" data-a="save"'+(ok?'':' disabled')+' id="saveBtn">'+saveLabel()+'</button></div></div>';
+  return h}
+
+function saveLabel(){var sh=S.sheet;
+  return Number(sh.amt)>0?((sh.edit?'Update \u20b9':'Save \u20b9')+inr(Number(sh.amt))):'Enter an amount'}
+
+// in-place update: no re-render, so the sheet never jumps
+function syncAmount(){
+  var sh=S.sheet,n=document.getElementById('amtN');
+  if(!n)return;
+  n.innerHTML='<span class="r">\u20b9</span>'+(sh.amt?inr(Number(sh.amt)):'0');
+  if(sh.amt)n.classList.remove('z');else n.classList.add('z');
+  var b=document.getElementById('saveBtn');
+  if(b){b.disabled=!(Number(sh.amt)>0&&(sh.type!=='rent'||!!sh.unitId));b.textContent=saveLabel()}
+}
+function syncChips(grp,value){
+  var box=document.querySelector('[data-grp="'+grp+'"]');
+  if(!box)return;
+  Array.prototype.forEach.call(box.querySelectorAll('.chip'),function(c){
+    if(c.classList.contains('add'))return;
+    if(c.getAttribute('data-v')===value)c.classList.add('on');else c.classList.remove('on')})
+}
+
+/* ------------------- estate + unit editor sheets ------------------- */
+function findProp(id){var f=null;S.cfg.properties.forEach(function(p){if(p.id===id)f=p});return f}
+
+function propSheetView(){
+  var prop=findProp(S.propSheet.id),isNew=!prop;
+  var h='<div class="scrim" data-a="ps-close"></div><div class="sheet anim" role="dialog">'
+   +'<div class="sheet-hd"><h3>'+(isNew?'New estate':'Edit estate')+'</h3>'
+   +'<button data-a="ps-close" style="padding:6px;color:var(--muted)" aria-label="Close">'+I.x+'</button></div>'
+   +'<div class="sheet-bd">'
+   +'<div class="fld"><label>Estate / building name</label>'
+   +'<input class="inp" id="ps-name" placeholder="e.g. Tolichowki" value="'+esc(prop?prop.name:'')+'"></div>';
+  if(prop){
+    h+='<div class="hintbox" style="margin-bottom:12px">This estate has <b>'+((prop.units||[]).length)
+     +'</b> unit'+((prop.units||[]).length===1?'':'s')+'. Deleting it removes them all \u2014 recorded payments stay in your ledger.</div>'
+     +'<button class="chip" style="width:100%;padding:14px;color:var(--verm);border:1px solid var(--rule)" '
+     +'data-a="ps-del" data-v="'+prop.id+'">Delete this estate</button>';
+  }
+  h+='</div><div class="sheet-ft"><button class="save" data-a="ps-save" data-v="'+(prop?prop.id:'')+'">'
+   +(isNew?'Add estate':'Save changes')+'</button></div></div>';
+  return h}
+
+function unitSheetView(){
+  var us=S.unitSheet,prop=findProp(us.propId),unit=null;
+  if(prop)(prop.units||[]).forEach(function(u){if(u.id===us.unitId)unit=u});
+  var isNew=!unit;
+  var h='<div class="scrim" data-a="us-close"></div><div class="sheet anim" role="dialog">'
+   +'<div class="sheet-hd"><h3>'+(isNew?'New unit':'Edit unit')+'</h3>'
+   +'<button data-a="us-close" style="padding:6px;color:var(--muted)" aria-label="Close">'+I.x+'</button></div>'
+   +'<div class="sheet-bd">'
+   +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:14px">'+esc(prop?prop.name:'')+'</div>'
+   +'<div class="fld"><label>Flat or shop number</label>'
+   +'<input class="inp" id="us-label" placeholder="e.g. 101, Shop 3" value="'+esc(unit?unit.label:'')+'"></div>'
+   +'<div class="fld"><label>Tenant name</label>'
+   +'<input class="inp" id="us-tenant" placeholder="e.g. Rizwan" value="'+esc(unit&&unit.tenant?unit.tenant:'')+'"></div>'
+   +'<div class="fld"><label>Monthly rent (\u20b9)</label>'
+   +'<input class="inp mono" id="us-rent" inputmode="numeric" placeholder="e.g. 10500" value="'
+   +(unit&&Number(unit.rent)?unit.rent:'')+'"></div>'
+   +'<div class="hintbox" style="margin-bottom:12px">Set the monthly rent and you can record it later with a single tap on <b>Paid</b>.</div>';
+  if(unit)h+='<button class="chip" style="width:100%;padding:14px;color:var(--verm);border:1px solid var(--rule)" '
+   +'data-a="us-del" data-v="'+us.propId+'|'+unit.id+'">Delete this unit</button>';
+  h+='</div><div class="sheet-ft"><button class="save" data-a="us-save" data-v="'+us.propId+'|'+(unit?unit.id:'')+'">'
+   +(isNew?'Add unit':'Save changes')+'</button></div></div>';
+  return h}
+
+function confirmView(){
+  var c=S.confirm;
+  return '<div class="scrim cf-scrim" data-a="cf-no"></div>'
+   +'<div class="cfbox" role="dialog" aria-modal="true">'
+   +'<h4>'+esc(c.title)+'</h4><p>'+esc(c.msg)+'</p>'
+   +'<div class="cfrow"><button class="cfno" data-a="cf-no">Cancel</button>'
+   +'<button class="'+(c.act==='w-bill-paid'?'cfok':'cfyes')+'" data-a="cf-yes">'+esc(c.label||'Delete')+'</button></div></div>';
+}
+
+function doConfirmed(c){
+  if(c.act==='row-del'){
+    trashEntry(c.val);S.openRow=null;saveEnt();renderAll();ping('Moved to Recently deleted');
+  }else if(c.act==='unit-undo'){
+    trashEntry(c.val);saveEnt();renderAll();ping('Rent entry removed');
+  }else if(c.act==='us-del'){
+    var z=c.val.split('|');
+    S.cfg.properties.forEach(function(p){if(p.id===z[0])p.units=(p.units||[]).filter(function(u){return u.id!==z[1]})});
+    saveCfg();S.unitSheet=null;renderOverlay(false);renderApp();ping('Unit deleted');
+  }else if(c.act==='ps-del'){
+    S.cfg.properties=S.cfg.properties.filter(function(p){return p.id!==c.val});
+    saveCfg();S.propSheet=null;renderOverlay(false);renderApp();ping('Estate deleted');
+  }else if(c.act==='w-bill-paid'){
+    markBillPaid(c.val);
+  }else if(c.act==='w-del'){
+    var q=c.val.split('|');wDelete(q[0],q[1]);
+  }else if(c.act==='trash-purge'){
+    purgeEntry(c.val);renderOverlay(false);ping('Deleted for good');
+  }else if(c.act==='trash-empty'){
+    TRASH.slice().forEach(function(e){purgeEntry(e.id)});
+    renderOverlay(false);ping('Bin emptied');
+  }
+}
+
+/* --------------------------- setup sheet --------------------------- */
+function setupView(){
+  var h='<div class="scrim" data-a="setup-close"></div><div class="sheet anim" role="dialog">'
+   +'<div class="sheet-hd"><h3>Setup</h3>'
+   +'<button data-a="setup-close" style="padding:6px;color:var(--muted)" aria-label="Close">'+I.x+'</button></div>'
+   +'<div class="sheet-bd">';
+
+  h+='<div class="fld"><label>Properties</label>';
+  S.cfg.properties.forEach(function(p){
+    h+='<div class="card" style="padding:4px 14px 10px;margin-bottom:9px">'
+     +'<div class="setrow"><div class="bd"><b>'+esc(p.name)+'</b><s>'+((p.units||[]).length)
+     +((p.units||[]).length===1?' unit':' units')+'</s></div>'
+     +'<button class="x" data-a="prop-open-edit" data-v="'+p.id+'" aria-label="Edit estate">'+I.pencil+'</button>'
+     +'<button class="x" data-a="unit-new" data-v="'+p.id+'" aria-label="Add unit">'+I.plusS+'</button></div>';
+    (p.units||[]).forEach(function(u){
+      h+='<div class="setrow" data-a="unit-open" data-v="'+p.id+'|'+u.id+'">'
+       +'<div class="bd"><b>'+esc(u.label)+'</b><s>'+esc(u.tenant||'No tenant')
+       +(Number(u.rent)?' \u00b7 \u20b9'+inr(u.rent)+'/mo':' \u00b7 no rent set')+'</s></div>'
+       +'<button class="x" data-a="unit-open" data-v="'+p.id+'|'+u.id+'" aria-label="Edit unit">'+I.pencil+'</button></div>';
+    });
+    h+='</div>';
+  });
+  h+='<button class="chip add" style="width:100%;padding:14px" data-a="prop-new">+ Add an estate</button></div>';
+
+  h+='<div class="fld"><label>People</label><div class="card" style="padding:4px 14px">';
+  S.cfg.people.forEach(function(p){
+    h+='<div class="setrow"><div class="bd"><b>'+esc(p)+'</b></div>'
+     +(S.cfg.people.length>1?'<button class="x" data-a="person-del" data-v="'+esc(p)+'" aria-label="Remove">'+I.xS+'</button>':'')+'</div>'});
+  h+='</div><div style="display:flex;gap:7px;margin-top:9px"><input class="inp" id="person-name" placeholder="Add a name">'
+   +'<button class="chip on" style="padding:0 18px" data-a="person-add">Add</button></div></div>';
+
+  h+='<div class="fld"><label>Categories</label><div class="card" style="padding:4px 14px">';
+  if(!S.cfg.categories.length)h+='<div style="padding:14px 0;font-size:12.5px;color:var(--muted)">No categories yet.</div>';
+  S.cfg.categories.forEach(function(c){
+    h+='<div class="setrow"><div class="bd"><b>'+esc(c)+'</b></div>'
+     +'<button class="x" data-a="cat-del" data-v="'+esc(c)+'" aria-label="Remove category">'+I.xS+'</button></div>'});
+  h+='</div><div style="display:flex;gap:7px;margin-top:9px"><input class="inp" id="cat-name" placeholder="Add a category">'
+   +'<button class="chip on" style="padding:0 18px" data-a="cat-add">Add</button></div>'
+   +'<div class="hintbox" style="margin-top:9px">Deleting a category only removes it from this list \u2014 past expenses keep the name they were logged with.</div></div>';
+
+  h+='<div class="fld"><label>How \u201cmoney given\u201d is treated</label>'
+   +'<div class="card" style="padding:13px 15px;display:flex;align-items:center;gap:13px">'
+   +'<div style="flex:1"><b style="font-size:14px;font-weight:600">Count it as spend</b>'
+   +'<div style="font-size:11.5px;color:var(--muted);margin-top:3px">Off: handing cash over doesn\u2019t move the balance \u2014 only the expense does. On: the balance drops the moment cash changes hands.</div></div>'
+   +'<button class="tgl'+(S.cfg.givenIsSpend?' on':'')+'" data-a="toggle-given" aria-label="Toggle"><i></i></button></div></div>';
+
+  pruneTrash();
+  h+='<div class="fld"><label>Recently deleted</label>';
+  if(!TRASH.length){
+    h+='<div class="hintbox">Nothing deleted recently. Anything you remove waits here for '+TRASH_DAYS+' days so it can be put back.</div>';
+  }else{
+    h+='<div class="card" style="padding:4px 14px">';
+    TRASH.slice().sort(function(a,b){return (b._delAt||0)-(a._delAt||0)}).forEach(function(e){
+      var days=Math.max(0,TRASH_DAYS-Math.floor((Date.now()-(e._delAt||0))/86400000));
+      var sgn=(e.type==='rent'||e.type==='received')?'+':(e.type==='given'?'\u2192':'\u2212');
+      h+='<div class="setrow"><div class="bd"><b>'+esc(entryTitle(e))+'</b><s>'
+       +sgn+'\u20b9'+inr(e.amount)+' \u00b7 '+esc(e.date||'')+' \u00b7 '+days+(days===1?' day left':' days left')+'</s></div>'
+       +'<button class="x" data-a="trash-restore" data-v="'+e.id+'" aria-label="Restore">'+I.rotate+'</button>'
+       +'<button class="x" data-a="trash-purge" data-v="'+e.id+'" aria-label="Delete for good">'+I.trash+'</button></div>';
+    });
+    h+='</div><button class="chip" style="width:100%;padding:13px;margin-top:9px;color:var(--verm)" data-a="trash-empty">Empty the bin</button>'
+     +'<div class="hintbox" style="margin-top:9px">Deleted entries stay recoverable for '+TRASH_DAYS+' days on both phones, then clear themselves.</div>';
+  }
+  h+='</div>';
+
+  h+='<div class="fld"><label>Sync across phones</label>';
+  if(!syncAvailable()){
+    h+='<div class="hintbox">Cloud sync isn\u2019t configured on this build yet. Once it\u2019s set up, sign in with Google here and both phones stay in step automatically.</div>';
+  }else if(SYNC.user){
+    var nm=SYNC.user.displayName||SYNC.user.email||'your account';
+    var ph=SYNC.user.photoURL;
+    h+='<div class="card" style="padding:13px 15px;display:flex;align-items:center;gap:12px">'
+     +(ph?'<img src="'+esc(ph)+'" alt="" style="width:38px;height:38px;border-radius:999px;flex-shrink:0">'
+         :'<div style="width:38px;height:38px;border-radius:999px;background:var(--teal);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">'+esc((nm[0]||'?').toUpperCase())+'</div>')
+     +'<div style="flex:1;min-width:0"><b style="font-size:13.5px;font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(nm)+'</b>'
+     +'<span style="font-size:11.5px;color:var(--teal)">\u25cf Live \u00b7 syncing automatically</span></div>'
+     +'<button class="chip" style="padding:9px 13px" data-a="sync-out">Sign out</button></div>'
+     +'<div class="hintbox" style="margin-top:9px"><b>Both phones sign in with the same Google account.</b> Every entry either of you adds shows up on the other within a second or two \u2014 no files to send.</div>';
+  }else{
+    h+='<button class="save" style="display:flex;align-items:center;justify-content:center;gap:10px" data-a="sync-in">'
+     +'<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M22.5 12.2c0-.7-.1-1.4-.2-2H12v3.9h5.9a5 5 0 0 1-2.2 3.3v2.7h3.5c2-1.9 3.3-4.7 3.3-7.9z" opacity=".9"/><path fill="#fff" d="M12 23c3 0 5.5-1 7.3-2.7l-3.5-2.7c-1 .7-2.3 1.1-3.8 1.1-2.9 0-5.4-2-6.3-4.6H2v2.8A11 11 0 0 0 12 23z" opacity=".7"/><path fill="#fff" d="M5.7 14.1a6.6 6.6 0 0 1 0-4.2V7.1H2a11 11 0 0 0 0 9.8z" opacity=".55"/><path fill="#fff" d="M12 5.4c1.6 0 3 .6 4.2 1.6l3.1-3.1A11 11 0 0 0 2 7.1l3.7 2.8C6.6 7.3 9.1 5.4 12 5.4z" opacity=".85"/></svg>'
+     +'Sign in with Google</button>'
+     +'<div class="hintbox" style="margin-top:9px"><b>Sign in on both phones with the same Google account</b> to keep your ledgers in step automatically. Your data stays private to that account.</div>';
+  }
+  h+='</div>';
+
+  h+='<div class="fld"><label>Offline backup</label><div style="display:flex;gap:7px">'
+   +'<button class="chip" style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:12px" data-a="export">'+I.down+' Export</button>'
+   +'<button class="chip" style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:12px" data-a="import">'+I.up+' Import</button></div>'
+   +'<input type="file" id="importer" accept="application/json,.json" style="display:none">'
+   +'<div class="hintbox" style="margin-top:9px"><b>A file you can keep anywhere.</b> Export saves a copy; Import merges one back in. Handy as a backup even with sync on.</div></div>';
+
+  h+='</div><div class="sheet-ft"><button class="save" data-a="setup-close">Done</button></div></div>';
+  return h}
+
+/* ---------------------------- render ------------------------------- */
+var app=document.getElementById('app'),overlay=document.getElementById('overlay');
+var toastEl=null;
+
+function renderApp(){
+  app.innerHTML=header()
+   +(S.tab==='balance'?viewBalance():S.tab==='rents'?viewRents():S.tab==='spend'?viewSpend():S.tab==='wealth'?viewWealth():viewGiven())
+   +fab()+tabbar()}
+
+function renderOverlay(animate){
+  var sc=overlay.querySelector('.sheet-bd');
+  var top=sc?sc.scrollTop:0;
+  if(S.sheet)S.sheet.anim=!!animate;
+  overlay.innerHTML=(S.wSheet?wSheetView():S.unitSheet?unitSheetView():S.propSheet?propSheetView():S.sheet?sheetView():(S.setup?setupView():''))
+    +(S.confirm?confirmView():'');
+  var sc2=overlay.querySelector('.sheet-bd');
+  if(sc2&&top&&!animate)sc2.scrollTop=top}
+
+function renderToast(){
+  if(toastEl){toastEl.remove();toastEl=null}
+  if(!S.toast)return;
+  toastEl=document.createElement('div');
+  toastEl.className='toast';toastEl.textContent=S.toast;
+  document.body.appendChild(toastEl)}
+
+function applyTheme(){
+  if(S.light)document.body.classList.remove('night');else document.body.classList.add('night');
+  var m=document.querySelector('meta[name="theme-color"]');
+  if(m)m.setAttribute('content',S.light?'#F4F0E7':'#12141B')}
+
+function renderAll(){renderApp();renderOverlay(false)}
+
+/* ---------------------------- actions ------------------------------ */
+function openSheet(type,seed,editEntry){
+  var first=allUnits()[0];
+  var unitId=(editEntry&&editEntry.unitId)||(seed&&seed.unitId)||(first?first.id:'');
+  var amt=editEntry?String(editEntry.amount):'';
+  if(!editEntry&&type==='rent'&&unitId){
+    var pu=findUnit(unitId);
+    if(pu&&Number(pu.rent)>0)amt=String(pu.rent);
+  }
+  S.sheet={
+    type:type,
+    edit:!!editEntry,editId:editEntry?editEntry.id:null,
+    seedFrom:seed?seed.id:null,
+    amt:amt,
+    person:(editEntry&&editEntry.person)||(seed&&seed.person)||S.cfg.people[0]||'',
+    cat:(editEntry&&editEntry.category)||(seed&&seed.category)||'',
+    mode:(editEntry&&editEntry.mode)||(seed&&seed.mode)||'Cash',
+    date:editEntry?editEntry.date:todayISO(),
+    note:(editEntry&&editEntry.note)||(seed&&seed.note)||'',
+    unitId:unitId,
+    newCat:false
+  };
+  S.setup=false;S.propSheet=null;S.unitSheet=null;
+  renderOverlay(true)}
+
+function commitEntry(){
+  var sh=S.sheet,val=Number(sh.amt);
+  if(!val)return;
+  var u=sh.type==='rent'?findUnit(sh.unitId):null;
+  if(sh.type==='rent'&&!u)return;
+  var rec={
+    type:sh.type,amount:val,date:sh.date||todayISO(),mode:sh.mode,note:(sh.note||'').trim(),
+    person:sh.person,
+    category:sh.type==='expense'?(sh.cat||'Uncategorised'):null,
+    unitId:sh.type==='rent'?sh.unitId:null,
+    unitLabel:sh.type==='rent'?u.label:null,
+    tenant:sh.type==='rent'?u.tenant:null,
+    propName:sh.type==='rent'?u.propName:null
+  };
+  if(sh.edit){
+    S.entries.forEach(function(e){if(e.id===sh.editId){for(var k in rec)e[k]=rec[k];e._m=Date.now();}});
+  }else{
+    rec.id=uid();rec.ts=Date.now();rec._m=Date.now();S.entries.push(rec);
+  }
+  var was=sh.edit;
+  saveEnt();S.sheet=null;S.openRow=null;
+  renderAll();
+  ping(was?'Entry updated':(rec.type==='rent'?'Rent recorded':rec.type==='given'?'Money given recorded':rec.type==='received'?'Money received recorded':'Expense recorded'))}
+
+function markPaid(unitId){
+  var u=findUnit(unitId);if(!u)return;
+  var amt=Number(u.rent)||0;if(!amt)return;
+  var d=new Date(),iso;
+  if(mKey(todayISO())===S.month)iso=todayISO();
+  else iso=S.month+'-'+pad2(Math.min(new Date().getDate(),daysIn(S.month)));
+  S.entries.push({id:uid(),ts:Date.now(),_m:Date.now(),type:'rent',amount:amt,date:iso,mode:'Cash',note:'',
+    person:S.cfg.people[0]||'',category:null,unitId:u.id,unitLabel:u.label,tenant:u.tenant,propName:u.propName});
+  saveEnt();renderAll();ping(u.label+' \u00b7 \u20b9'+inr(amt)+' received')}
+
+function val(id){var e=document.getElementById(id);return e?e.value.trim():''}
+
+function exportFile(){
+  var data={app:'float',version:3,exportedAt:new Date().toISOString(),config:S.cfg,entries:S.entries,wealth:W};
+  var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  var url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download='float-'+todayISO()+'.json';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(url)},1000);
+  ping('Backup file saved')}
+
+function importFile(file){
+  var r=new FileReader();
+  r.onload=function(){
+    try{
+      var d=JSON.parse(r.result);
+      if(!d||!Array.isArray(d.entries)){ping('That file isn\u2019t a Float backup');return}
+      var seen={};S.entries.forEach(function(e){seen[e.id]=true});
+      var added=0;
+      d.entries.forEach(function(e){if(e&&e.id&&!seen[e.id]){S.entries.push(e);seen[e.id]=true;added++}});
+      if(d.config){var c=d.config;
+        (c.people||[]).forEach(function(p){if(S.cfg.people.indexOf(p)<0)S.cfg.people.push(p)});
+        (c.categories||[]).forEach(function(x){if(S.cfg.categories.indexOf(x)<0)S.cfg.categories.push(x)});
+        var have={};S.cfg.properties.forEach(function(p){have[p.id]=p});
+        (c.properties||[]).forEach(function(p){
+          if(!have[p.id]){S.cfg.properties.push(p)}
+          else{var ex={};(have[p.id].units||[]).forEach(function(u){ex[u.id]=true});
+            (p.units||[]).forEach(function(u){if(!ex[u.id])have[p.id].units.push(u)})}})}
+      if(d.wealth&&d.wealth.cards){W=d.wealth;W._m=Date.now();store(K_W,W)}
+      saveEnt();saveCfg();renderAll();
+      ping(added+(added===1?' entry added':' entries added'));
+    }catch(err){ping('Couldn\u2019t read that file')}};
+  r.readAsText(file)}
+
+document.addEventListener('click',function(ev){
+  var el=ev.target.closest?ev.target.closest('[data-a]'):null;
+  if(!el)return;
+  var a=el.getAttribute('data-a'),v=el.getAttribute('data-v');
+  if(a.indexOf('w-')===0){wealthAction(a,v);return}
+
+  switch(a){
+    case 'theme': S.light=!S.light;store(K_THEME,S.light);applyTheme();break;
+    case 'month': S.month=shiftM(S.month,+v);S.openRow=null;renderApp();break;
+    case 'tab': S.tab=v;S.openRow=null;window.scrollTo(0,0);renderApp();break;
+    case 'setup-open': S.setup=true;S.sheet=null;renderOverlay(true);break;
+    case 'setup-close': S.setup=false;renderOverlay(false);renderApp();break;
+
+    case 'add-expense': openSheet('expense',null,null);break;
+    case 'add-rent': openSheet('rent',null,null);break;
+    case 'add-given': openSheet('given',null,null);break;
+    case 'add-received': openSheet('received',null,null);break;
+    case 'sheet-close': S.sheet=null;renderOverlay(false);break;
+    case 'sheet-type':
+      S.sheet.type=v;
+      if(v==='rent'&&!S.sheet.amt){var uu=findUnit(S.sheet.unitId);if(uu&&Number(uu.rent)>0)S.sheet.amt=String(uu.rent)}
+      renderOverlay(false);break;
+
+    case 'pad':
+      if(v==='del')S.sheet.amt=S.sheet.amt.slice(0,-1);
+      else if(v==='00'){if(S.sheet.amt&&S.sheet.amt.length<9)S.sheet.amt+='00'}
+      else if(S.sheet.amt.length<9)S.sheet.amt=(S.sheet.amt==='0'?v:S.sheet.amt+v);
+      syncAmount();break;
+
+    case 'fullrent': S.sheet.amt=String(v);syncAmount();break;
+    case 'person': S.sheet.person=v;syncChips('person',v);break;
+    case 'mode': S.sheet.mode=v;syncChips('mode',v);break;
+    case 'cat': S.sheet.cat=(S.sheet.cat===v?'':v);syncChips('cat',S.sheet.cat);break;
+    case 'newcat-toggle': S.sheet.newCat=!S.sheet.newCat;renderOverlay(false);break;
+    case 'newcat-add': {
+      var nc=val('newcat');
+      if(nc){if(S.cfg.categories.indexOf(nc)<0){S.cfg.categories.push(nc);saveCfg()}S.sheet.cat=nc}
+      S.sheet.newCat=false;renderOverlay(false);break}
+    case 'save': commitEntry();break;
+
+    case 'row-toggle': S.openRow=(S.openRow===v?null:v);renderApp();break;
+    case 'row-edit': {
+      var t=null;S.entries.forEach(function(e){if(e.id===v)t=e});
+      S.openRow=null;renderApp();
+      if(t)openSheet(t.type,null,t);
+      break}
+    case 'row-clone': {
+      var s=null;S.entries.forEach(function(e){if(e.id===v)s=e});
+      S.openRow=null;renderApp();
+      if(s)openSheet(s.type,s,null);
+      break}
+    case 'row-del':
+      S.confirm={title:'Delete this entry?',msg:'It moves to Recently deleted for '+TRASH_DAYS+' days, so you can put it back if this was a mistake.',act:'row-del',val:v,label:'Delete'};
+      renderOverlay(false);break;
+
+    case 'unit-paid': markPaid(v);break;
+    case 'unit-undo':
+      S.confirm={title:'Remove this rent entry?',msg:'It moves to Recently deleted for '+TRASH_DAYS+' days, so you can put it back.',act:'unit-undo',val:v,label:'Remove'};
+      renderOverlay(false);break;
+    case 'unit-enter': openSheet('rent',{unitId:v},null);break;
+
+    case 'prop-new': S.propSheet={id:null};renderOverlay(true);break;
+    case 'prop-open-edit': S.propSheet={id:v};renderOverlay(true);break;
+    case 'ps-close': S.propSheet=null;renderOverlay(false);break;
+    case 'ps-save': {var nm=val('ps-name');
+      if(!nm){ping('Give the estate a name');break}
+      if(v){S.cfg.properties.forEach(function(p){if(p.id===v)p.name=nm});
+        S.entries.forEach(function(e){if(e.type==='rent'&&e.unitId&&findUnit(e.unitId)&&findUnit(e.unitId).propId===v)e.propName=nm});saveEnt()}
+      else{S.cfg.properties.push({id:uid(),name:nm,units:[]})}
+      saveCfg();S.propSheet=null;renderOverlay(false);renderApp();ping(v?'Estate renamed':'Estate added');break}
+    case 'ps-del':
+      S.confirm={title:'Delete this estate?',msg:'The estate and all its units are removed. Payments already recorded stay in your ledger.',act:'ps-del',val:v,label:'Delete'};
+      renderOverlay(false);break;
+
+    case 'unit-new': S.unitSheet={propId:v,unitId:null};renderOverlay(true);break;
+    case 'unit-open': {var o=v.split('|');S.unitSheet={propId:o[0],unitId:o[1]};renderOverlay(true);break}
+    case 'us-close': S.unitSheet=null;renderOverlay(false);break;
+    case 'us-save': {var w=v.split('|'),lb=val('us-label');
+      if(!lb){ping('Give the unit a number');break}
+      var tn=val('us-tenant'),rt=numOf(val('us-rent'));
+      S.cfg.properties.forEach(function(p){
+        if(p.id!==w[0])return;
+        p.units=p.units||[];
+        if(w[1]){p.units.forEach(function(u){if(u.id===w[1]){u.label=lb;u.tenant=tn;u.rent=rt}})}
+        else{p.units.push({id:uid(),label:lb,tenant:tn,rent:rt})}
+      });
+      // keep already-recorded payments showing the corrected names
+      if(w[1]){var pn2=findProp(w[0]);
+        S.entries.forEach(function(e){if(e.type==='rent'&&e.unitId===w[1]){
+          e.unitLabel=lb;e.tenant=tn;if(pn2)e.propName=pn2.name}});
+        saveEnt()}
+      saveCfg();S.unitSheet=null;renderOverlay(false);renderApp();ping(w[1]?'Unit updated':'Unit added');break}
+    case 'us-del':
+      S.confirm={title:'Delete this unit?',msg:'The unit is removed from the estate. Rent payments already recorded stay in your ledger.',act:'us-del',val:v,label:'Delete'};
+      renderOverlay(false);break;
+
+    case 'person-add': {var pnm=val('person-name');
+      if(pnm&&S.cfg.people.indexOf(pnm)<0){S.cfg.people.push(pnm);saveCfg()}
+      renderOverlay(false);break}
+    case 'person-del':
+      if(S.cfg.people.length>1){S.cfg.people=S.cfg.people.filter(function(p){return p!==v});saveCfg()}
+      renderOverlay(false);break;
+    case 'cat-add': {var cnm=val('cat-name');
+      if(cnm&&S.cfg.categories.indexOf(cnm)<0){S.cfg.categories.push(cnm);saveCfg()}
+      renderOverlay(false);break}
+    case 'cat-del':
+      S.cfg.categories=S.cfg.categories.filter(function(c){return c!==v});
+      saveCfg();renderOverlay(false);break;
+    case 'toggle-given': S.cfg.givenIsSpend=!S.cfg.givenIsSpend;saveCfg();renderOverlay(false);renderApp();break;
+
+    case 'sync-in': if(syncAvailable()){window.HisaabSync.signIn();ping('Opening Google sign-in\u2026');}break;
+    case 'sync-out': if(syncAvailable()){window.HisaabSync.signOut();SYNC.on=false;SYNC.user=null;store('hisaab:sync',false);renderOverlay(false);ping('Signed out \u00b7 sync paused');}break;
+
+    case 'cf-no': S.confirm=null;renderOverlay(false);break;
+    case 'cf-yes': {var cc=S.confirm;S.confirm=null;if(cc)doConfirmed(cc);break}
+
+    case 'trash-restore':
+      if(restoreEntry(v)){renderAll();ping('Entry restored');}break;
+    case 'trash-purge':
+      S.confirm={title:'Delete for good?',msg:'This entry can\u2019t be recovered afterwards, on either phone.',act:'trash-purge',val:v,label:'Delete forever'};
+      renderOverlay(false);break;
+    case 'trash-empty':
+      S.confirm={title:'Empty the bin?',msg:'All '+TRASH.length+' deleted '+(TRASH.length===1?'entry':'entries')+' will be gone for good on both phones.',act:'trash-empty',val:null,label:'Empty bin'};
+      renderOverlay(false);break;
+
+    case 'export': exportFile();break;
+    case 'import': {var f=document.getElementById('importer');if(f)f.click();break}
+  }
+});
+
+function fieldEdit(ev){
+  var t=ev.target;
+  var rc=t.getAttribute&&t.getAttribute('data-recalc');
+  if(rc){cardRecalc(rc);return}
+  var f2=t.getAttribute&&t.getAttribute('data-f2');
+  if(f2==='goldRate'){W.goldRate=numOf(t.value)||W.goldRate;saveW();renderApp();return}
+  if(f2==='silverRate'){W.silverRate=numOf(t.value)||W.silverRate;saveW();renderApp();return}
+  if(f2==='saleLot'&&S.wSheet){S.wSheet.lotId=t.value;renderOverlay(false);return}
+  var f=t.getAttribute&&t.getAttribute('data-f');
+  if(f&&S.sheet){
+    S.sheet[f]=t.value;
+    if(f==='unitId'){
+      var u=findUnit(t.value);
+      if(u&&Number(u.rent)>0&&!S.sheet.amt){S.sheet.amt=String(u.rent)}
+      renderOverlay(false);
+    }
+  }
+  if(t.id==='importer'&&t.files&&t.files[0])importFile(t.files[0]);
+}
+document.addEventListener('input',fieldEdit);
+document.addEventListener('change',fieldEdit);
+document.addEventListener('keydown',function(ev){
+  if(ev.key!=='Enter')return;
+  var map={'person-name':'person-add','newcat':'newcat-add','ps-name':'ps-save','us-rent':'us-save','cat-name':'cat-add'};
+  var id=ev.target.id;
+  if(map[id]){ev.preventDefault();var b=document.querySelector('[data-a="'+map[id]+'"]');if(b)b.click()}
+});
+
+if('serviceWorker' in navigator && location.protocol==='https:'){
+  window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){})})
+}
+
+pull();pullW();pruneTrash();applyTheme();renderAll();
+
+// bring up cloud sync once the Firebase module has settled
+(function initSync(tries){
+  if(syncAvailable()){ syncStart(); renderOverlay(false); return; }
+  if(window.HisaabSync&&window.HisaabSync.ready===false&&!window.HisaabSync.enabled){ return; }
+  if(tries>40)return;
+  setTimeout(function(){initSync(tries+1)},150);
+})(0);
+})();
+</script>
+</body>
+</html>
